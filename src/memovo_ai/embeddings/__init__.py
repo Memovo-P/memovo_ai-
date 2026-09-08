@@ -9,18 +9,27 @@ from memovo_ai.embeddings.models import (
     EMBEDDING_DIMENSION,
     Embedding,
     EmbeddingError,
+    EmbeddingInferenceError,
     InvalidEmbeddingError,
+    ModelUnavailableError,
+    l2_norm,
     validate_embedding,
     validate_embeddings,
 )
+from memovo_ai.embeddings.qwen3 import Qwen3EmbeddingProvider, TextEncoder
 
 __all__ = [
     "EMBEDDING_DIMENSION",
     "Embedding",
     "EmbeddingError",
+    "EmbeddingInferenceError",
     "EmbeddingProvider",
     "InvalidEmbeddingError",
+    "ModelUnavailableError",
+    "Qwen3EmbeddingProvider",
+    "TextEncoder",
     "ValidatedEmbeddingProvider",
+    "l2_norm",
     "validate_embedding",
     "validate_embeddings",
 ]

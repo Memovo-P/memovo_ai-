@@ -38,6 +38,25 @@ uv sync
 cp .env.example .env
 ```
 
+This installs everything needed for development and the full test suite. The
+model runtime is an optional extra, kept out of the default install so `uv sync`
+and CI stay light:
+
+```bash
+uv sync --extra embeddings    # adds sentence-transformers (pulls torch)
+```
+
+Unit tests inject a fake encoder, so they never import the runtime and never
+download weights. The real model is exercised only by an opt-in integration
+test:
+
+```bash
+MEMOVO_RUN_EMBEDDING_INTEGRATION=1 uv run pytest tests/integration -s
+```
+
+It downloads roughly 1.2 GB on first run and reports the model's output
+normalization and query-prompt availability.
+
 ## Verification gate
 
 Every phase must pass all five commands before it is considered complete:
@@ -67,5 +86,6 @@ written, rather than all at once as empty scaffolding.
 | 03 - Hybrid chunker | Complete |
 | 04 - Deterministic chunk IDs | Complete |
 | 05 - Embedding provider abstraction | Complete |
-| 06 - Qwen3 embedding integration | Not started |
-| 07+ | Not started |
+| 06 - Qwen3 embedding integration | Complete |
+| 07 - Memory processor service | Not started |
+| 08+ | Not started |

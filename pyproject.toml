@@ -11,6 +11,15 @@ dependencies = [
     "pydantic-settings>=2.6.0",
 ]
 
+[project.optional-dependencies]
+# The model runtime. Kept optional so `uv sync` and CI stay light: unit tests
+# inject a fake encoder and never import this. Install for production, or to
+# run the embedding integration test:
+#     uv sync --extra embeddings
+embeddings = [
+    "sentence-transformers>=3.0.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
@@ -95,6 +104,11 @@ disallow_any_generics = true
 no_implicit_reexport = true
 show_error_codes = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Optional extra; absent from the default dev install.
+module = ["sentence_transformers.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_typed = true

@@ -19,7 +19,10 @@ __all__ = [
     "EMBEDDING_DIMENSION",
     "Embedding",
     "EmbeddingError",
+    "EmbeddingInferenceError",
     "InvalidEmbeddingError",
+    "ModelUnavailableError",
+    "l2_norm",
     "validate_embedding",
     "validate_embeddings",
 ]
@@ -44,6 +47,25 @@ class EmbeddingError(Exception):
 
 class InvalidEmbeddingError(EmbeddingError):
     """A provider returned something that is not a usable embedding."""
+
+
+class ModelUnavailableError(EmbeddingError):
+    """The embedding model could not be loaded or is not ready.
+
+    Phase 15 maps this to ``MODEL_UNAVAILABLE``.
+    """
+
+
+class EmbeddingInferenceError(EmbeddingError):
+    """Inference failed while producing embeddings.
+
+    Phase 15 maps this to ``EMBEDDING_FAILED``.
+    """
+
+
+def l2_norm(embedding: Sequence[float]) -> float:
+    """Euclidean norm, used to measure whether a model returns unit vectors."""
+    return math.sqrt(sum(float(value) * float(value) for value in embedding))
 
 
 def _describe(value: object) -> str:
@@ -105,7 +127,7 @@ def validate_embedding(
         values.append(value)
 
     if expect_unit_norm:
-        norm = math.sqrt(sum(value * value for value in values))
+        norm = l2_norm(values)
         if abs(norm - 1.0) > _NORM_TOLERANCE:
             message = f"embedding{where} is not unit-normalized"
             raise InvalidEmbeddingError(message)
