@@ -13,6 +13,7 @@ Wrapping happens here, once, so the guarantees are not optional:
   itself, so isolation holds regardless of what is passed in
 """
 
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -28,15 +29,27 @@ from memovo_ai.embeddings.models import ModelUnavailableError
 from memovo_ai.embeddings.qwen3 import Qwen3EmbeddingProvider
 from memovo_ai.providers.vector_search.base import VectorSearchProvider
 from memovo_ai.providers.vector_search.fake import FakeVectorSearchProvider
+from memovo_ai.services.memory_processor import MemoryProcessorService
 from memovo_ai.services.memory_search import MemorySearchService
 
 __all__ = [
+    "ProcessorService",
     "SearchService",
+    "Services",
     "build_embedding_provider",
-    "build_memory_search_service",
+    "build_services",
     "build_vector_search_provider",
+    "get_memory_processor_service",
     "get_memory_search_service",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class Services:
+    """The application services, sharing one loaded embedding model."""
+
+    memory_search: MemorySearchService
+    memory_processor: MemoryProcessorService
 
 
 def build_embedding_provider(settings: EmbeddingSettings | None = None) -> EmbeddingProvider:
@@ -77,17 +90,26 @@ def build_vector_search_provider(
     raise ValueError(message)
 
 
-def build_memory_search_service(
+def build_services(
     *,
     embedding_settings: EmbeddingSettings | None = None,
     provider_settings: ProviderSettings | None = None,
     search_settings: SearchSettings | None = None,
-) -> MemorySearchService:
-    """Assemble the search service from configuration."""
-    return MemorySearchService(
-        embedding_provider=build_embedding_provider(embedding_settings),
-        vector_search=build_vector_search_provider(provider_settings),
-        settings=search_settings if search_settings is not None else SearchSettings(),
+) -> Services:
+    """Assemble every service from configuration.
+
+    The embedding provider is built once and shared, so the model is loaded a
+    single time no matter how many services use it (doc 02, section 7).
+    """
+    embeddings = build_embedding_provider(embedding_settings)
+
+    return Services(
+        memory_search=MemorySearchService(
+            embedding_provider=embeddings,
+            vector_search=build_vector_search_provider(provider_settings),
+            settings=search_settings if search_settings is not None else SearchSettings(),
+        ),
+        memory_processor=MemoryProcessorService(embedding_provider=embeddings),
     )
 
 
@@ -110,4 +132,23 @@ def get_memory_search_service(request: Request) -> MemorySearchService:
     return service
 
 
+def get_memory_processor_service(request: Request) -> MemoryProcessorService:
+    """Return the processor built at startup.
+
+    Raises:
+        ModelUnavailableError: if startup could not build it. Phase 15 maps
+            this to ``MODEL_UNAVAILABLE``.
+    """
+    service: MemoryProcessorService | None = getattr(
+        request.app.state, "memory_processor_service", None
+    )
+
+    if service is None:
+        message = "embedding model is not available"
+        raise ModelUnavailableError(message)
+
+    return service
+
+
 SearchService = Annotated[MemorySearchService, Depends(get_memory_search_service)]
+ProcessorService = Annotated[MemoryProcessorService, Depends(get_memory_processor_service)]

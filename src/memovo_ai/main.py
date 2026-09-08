@@ -15,33 +15,36 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from memovo_ai.api.dependencies import Services, build_services
 from memovo_ai.api.errors import register_exception_handlers
 from memovo_ai.api.router import api_router
 from memovo_ai.embeddings.models import EmbeddingError
-from memovo_ai.services.memory_search import MemorySearchService
 
 __all__ = ["app", "create_app"]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Build the search service once, at startup."""
-    # Imported here so that overriding dependencies in tests does not pull in
-    # the model runtime through this module's import.
-    from memovo_ai.api.dependencies import build_memory_search_service
+    """Build the services once, at startup, sharing one loaded model.
 
-    service: MemorySearchService | None
+    Importing the composition root here is safe: ``qwen3`` defers the model
+    runtime import to ``load()``, so nothing heavy is pulled in until a model
+    is actually requested.
+    """
+    services: Services | None
     try:
-        service = build_memory_search_service()
+        services = build_services()
     except (EmbeddingError, ValueError):
-        # Startup continues in an unavailable state. The dependency raises
+        # Startup continues in an unavailable state. The dependencies raise
         # ModelUnavailableError per request, which Phase 15 maps to a
         # standardized 503 rather than an opaque crash loop.
-        service = None
+        services = None
 
-    app.state.memory_search_service = service
+    app.state.memory_search_service = services.memory_search if services else None
+    app.state.memory_processor_service = services.memory_processor if services else None
     yield
     app.state.memory_search_service = None
+    app.state.memory_processor_service = None
 
 
 def create_app() -> FastAPI:

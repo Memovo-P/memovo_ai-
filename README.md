@@ -76,10 +76,10 @@ uv run mypy src
 uv run uvicorn memovo_ai.main:app --reload
 ```
 
-`POST /ai/memories/search` is live. `POST /ai/memories/process` arrives at
-Phase 08. Without the `embeddings` extra installed the model cannot load, so
-the service starts in an unavailable state and search requests fail rather
-than silently reporting no memories.
+Both Sprint 1 endpoints are live: `POST /ai/memories/process` and
+`POST /ai/memories/search`. Without the `embeddings` extra installed the model
+cannot load, so the service starts in an unavailable state and requests fail
+with `MODEL_UNAVAILABLE` rather than silently reporting no memories.
 
 This service is internal and must not be exposed publicly; the Backend is the
 only caller.
@@ -102,7 +102,7 @@ written, rather than all at once as empty scaffolding.
 | 05 - Embedding provider abstraction | Complete |
 | 06 - Qwen3 embedding integration | Complete |
 | 07 - Memory processor service | Complete |
-| 08 - `/ai/memories/process` route | Not started |
+| 08 - `/ai/memories/process` route | Complete |
 | 09 - Vector search provider | Complete |
 | 10 - User isolation enforcement | Complete |
 | 11 - Retrieval filtering | Complete |
