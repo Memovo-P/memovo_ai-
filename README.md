@@ -64,5 +64,6 @@ written, rather than all at once as empty scaffolding.
 | 00 - Repository foundation | Complete |
 | 01 - API contract schemas | Complete |
 | 02 - Canonical content preparation | Complete |
-| 03 - Hybrid chunker | Not started |
-| 04+ | Not started |
+| 03 - Hybrid chunker | Complete |
+| 04 - Deterministic chunk IDs | Not started |
+| 05+ | Not started |

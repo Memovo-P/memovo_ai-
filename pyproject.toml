@@ -73,6 +73,10 @@ select = [
     "S101",   # assert is the point of a test
     "ANN201", # test functions need no return annotation
 ]
+# The sentence splitter exists to match non-ASCII punctuation (Arabic and CJK
+# terminators). RUF001/RUF003 flag exactly the characters the module is for,
+# and its suggested ASCII replacements are wrong here.
+"src/memovo_ai/chunking/hybrid_chunker.py" = ["RUF001", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["memovo_ai"]
