@@ -88,4 +88,6 @@ written, rather than all at once as empty scaffolding.
 | 05 - Embedding provider abstraction | Complete |
 | 06 - Qwen3 embedding integration | Complete |
 | 07 - Memory processor service | Not started |
-| 08+ | Not started |
+| 08 - `/ai/memories/process` route | Not started |
+| 09 - Vector search provider | Complete |
+| 10+ | Not started |
