@@ -1,0 +1,63 @@
+"""FastAPI application.
+
+The embedding model is loaded once during startup and shared across requests
+(doc 02, section 7). A failed load does not crash the process: it leaves the
+service unset, and requests then fail with a clear unavailable state rather
+than the application refusing to start (doc 06, section 9). That also lets the
+API be exercised without model weights present.
+
+This service is internal. It must not be exposed publicly (doc 06, section 7);
+the Backend is the only caller.
+"""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from memovo_ai.api.router import api_router
+from memovo_ai.embeddings.models import EmbeddingError
+from memovo_ai.services.memory_search import MemorySearchService
+
+__all__ = ["app", "create_app"]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build the search service once, at startup."""
+    # Imported here so that overriding dependencies in tests does not pull in
+    # the model runtime through this module's import.
+    from memovo_ai.api.dependencies import build_memory_search_service
+
+    service: MemorySearchService | None
+    try:
+        service = build_memory_search_service()
+    except (EmbeddingError, ValueError):
+        # Startup continues in an unavailable state. The dependency raises
+        # ModelUnavailableError per request, which Phase 15 maps to a
+        # standardized 503 rather than an opaque crash loop.
+        service = None
+
+    app.state.memory_search_service = service
+    yield
+    app.state.memory_search_service = None
+
+
+def create_app() -> FastAPI:
+    """Build the application.
+
+    Tests override ``get_memory_search_service`` rather than starting the real
+    model, so nothing here downloads weights.
+    """
+    application = FastAPI(
+        title="Memovo AI Service",
+        version="0.1.0",
+        summary="Memory processing and retrieval for Memovo.",
+        lifespan=lifespan,
+    )
+    application.include_router(api_router)
+
+    return application
+
+
+app = create_app()

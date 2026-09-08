@@ -13,7 +13,9 @@ __all__ = [
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_SEARCH_SIMILARITY_THRESHOLD",
     "DEFAULT_SEARCH_TOP_K",
+    "FAKE_VECTOR_PROVIDER",
     "EmbeddingSettings",
+    "ProviderSettings",
     "SearchSettings",
 ]
 
@@ -109,3 +111,27 @@ class SearchSettings(BaseSettings):
         default=DEFAULT_SEARCH_SIMILARITY_THRESHOLD,
         allow_inf_nan=False,
     )
+
+
+#: Only the in-memory fake exists. The production vector database has not been
+#: selected (doc 01, section 8), so no adapter is registered for it yet.
+FAKE_VECTOR_PROVIDER = "fake"
+
+
+class ProviderSettings(BaseSettings):
+    """Which infrastructure adapters to build at startup.
+
+    Uses the bare ``MEMOVO_`` prefix because doc 06 section 10 names the
+    variable ``MEMOVO_VECTOR_PROVIDER``, not ``MEMOVO_PROVIDER_*``.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    #: Read-only vector search adapter. ``fake`` is the development default.
+    vector_provider: str = FAKE_VECTOR_PROVIDER

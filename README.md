@@ -70,6 +70,20 @@ uv run mypy src
 
 `uv sync` must succeed first.
 
+## Running the service
+
+```bash
+uv run uvicorn memovo_ai.main:app --reload
+```
+
+`POST /ai/memories/search` is live. `POST /ai/memories/process` arrives at
+Phase 08. Without the `embeddings` extra installed the model cannot load, so
+the service starts in an unavailable state and search requests fail rather
+than silently reporting no memories.
+
+This service is internal and must not be exposed publicly; the Backend is the
+only caller.
+
 ## Repository layout
 
 The target layout is defined in `memovo-ai-docs/04_REPOSITORY_STRUCTURE.md`.
@@ -94,4 +108,5 @@ written, rather than all at once as empty scaffolding.
 | 11 - Retrieval filtering | Complete |
 | 12 - Ranking and deduplication | Complete |
 | 13 - Memory search service | Complete |
-| 14+ | Not started |
+| 14 - `/ai/memories/search` route | Complete |
+| 15+ | Not started |

@@ -26,6 +26,8 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    # Required by starlette's TestClient, which drives the route tests.
+    "httpx2>=0.28.0",
 ]
 
 [build-system]
@@ -43,6 +45,12 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+    "error",
+    # starlette's TestClient still uses the deprecated anyio alias. Third
+    # party, nothing to fix here; drop this once starlette updates.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 markers = [
     "unit: isolated component tests",
     "integration: cross-component tests through the application layer",
