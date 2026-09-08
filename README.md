@@ -62,5 +62,6 @@ written, rather than all at once as empty scaffolding.
 | Phase | Status |
 |---|---|
 | 00 - Repository foundation | Complete |
-| 01 - API contract schemas | Not started |
-| 02+ | Not started |
+| 01 - API contract schemas | Complete |
+| 02 - Canonical content preparation | Not started |
+| 03+ | Not started |
