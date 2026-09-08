@@ -1,8 +1,7 @@
 """Retrieval: vector hit models, filtering, ranking and orchestration.
 
-Sprint 1 adds these per phase. Threshold filtering and the hit model exist so
-far; ranking and deduplication (Phase 12) and the search service (Phase 13)
-follow.
+Sprint 1 adds these per phase. Models, threshold filtering and ranking exist
+so far; the search service (Phase 13) follows.
 """
 
 from memovo_ai.retrieval.filtering import (
@@ -10,11 +9,14 @@ from memovo_ai.retrieval.filtering import (
     filter_by_threshold,
     meets_threshold,
 )
-from memovo_ai.retrieval.models import VectorSearchHit
+from memovo_ai.retrieval.models import RankedMemory, VectorSearchHit
+from memovo_ai.retrieval.ranking import rank_memories
 
 __all__ = [
     "DEFAULT_SIMILARITY_THRESHOLD",
+    "RankedMemory",
     "VectorSearchHit",
     "filter_by_threshold",
     "meets_threshold",
+    "rank_memories",
 ]

@@ -92,4 +92,5 @@ written, rather than all at once as empty scaffolding.
 | 09 - Vector search provider | Complete |
 | 10 - User isolation enforcement | Complete |
 | 11 - Retrieval filtering | Complete |
-| 12+ | Not started |
+| 12 - Ranking and deduplication | Complete |
+| 13+ | Not started |

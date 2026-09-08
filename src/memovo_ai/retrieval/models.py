@@ -8,7 +8,7 @@ this type; none of them exist yet.
 import math
 from dataclasses import dataclass
 
-__all__ = ["VectorSearchHit"]
+__all__ = ["RankedMemory", "VectorSearchHit"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +48,37 @@ class VectorSearchHit:
     def __post_init__(self) -> None:
         if self.chunk_index < 0:
             message = f"chunk_index must not be negative, got {self.chunk_index}"
+            raise ValueError(message)
+        if not math.isfinite(self.score):
+            message = "score must be a finite number"
+            raise ValueError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class RankedMemory:
+    """One unique Memory in the retrieval result set.
+
+    Produced by :func:`~memovo_ai.retrieval.ranking.rank_memories` after
+    grouping the relevant chunks by ``memory_id``. Each Memory appears exactly
+    once (doc 01, decision 17).
+
+    ``score`` is the maximum score across the Memory's matching chunks (doc 01,
+    decision 18) -- not a sum or a mean, either of which would let a Memory
+    with many weak chunks outrank one with a single strong match.
+
+    ``chunks`` holds every matching chunk that survived the threshold, in
+    reading order.
+    """
+
+    memory_id: str
+    score: float
+    title: str
+    tags: tuple[str, ...]
+    chunks: tuple[VectorSearchHit, ...]
+
+    def __post_init__(self) -> None:
+        if not self.chunks:
+            message = f"ranked memory {self.memory_id} must have at least one chunk"
             raise ValueError(message)
         if not math.isfinite(self.score):
             message = "score must be a finite number"
