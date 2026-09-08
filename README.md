@@ -65,5 +65,6 @@ written, rather than all at once as empty scaffolding.
 | 01 - API contract schemas | Complete |
 | 02 - Canonical content preparation | Complete |
 | 03 - Hybrid chunker | Complete |
-| 04 - Deterministic chunk IDs | Not started |
-| 05+ | Not started |
+| 04 - Deterministic chunk IDs | Complete |
+| 05 - Embedding provider abstraction | Not started |
+| 06+ | Not started |
