@@ -93,4 +93,5 @@ written, rather than all at once as empty scaffolding.
 | 10 - User isolation enforcement | Complete |
 | 11 - Retrieval filtering | Complete |
 | 12 - Ranking and deduplication | Complete |
-| 13+ | Not started |
+| 13 - Memory search service | Complete |
+| 14+ | Not started |
