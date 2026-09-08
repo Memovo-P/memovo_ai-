@@ -109,4 +109,5 @@ written, rather than all at once as empty scaffolding.
 | 12 - Ranking and deduplication | Complete |
 | 13 - Memory search service | Complete |
 | 14 - `/ai/memories/search` route | Complete |
-| 15+ | Not started |
+| 15 - Error contract | Complete |
+| 16+ | Not started |

@@ -24,6 +24,7 @@ from memovo_ai.retrieval.models import VectorSearchHit
 
 __all__ = [
     "VECTOR_WRITE_OPERATIONS",
+    "InvalidUserScopeError",
     "UserIsolationError",
     "UserScopedVectorSearchProvider",
     "VectorSearchProvider",
@@ -70,6 +71,17 @@ class UserIsolationError(Exception):
     """
 
 
+class InvalidUserScopeError(ValueError):
+    """The supplied ``user_id`` cannot scope a search.
+
+    Subclasses :class:`ValueError` so callers that catch the broader type
+    still behave as before. It exists as its own type so the error contract
+    can map a bad request to ``INVALID_INPUT`` without also sweeping up
+    unrelated ``ValueError``s, such as a misconfigured provider name, which
+    are service defects and belong on ``INTERNAL_ERROR``.
+    """
+
+
 def validate_user_scope(user_id: str) -> str:
     """Return ``user_id`` unchanged after checking it can scope a search.
 
@@ -82,7 +94,7 @@ def validate_user_scope(user_id: str) -> str:
     """
     if not isinstance(user_id, str) or not user_id.strip():
         message = "user_id must be a non-blank string to scope a vector search"
-        raise ValueError(message)
+        raise InvalidUserScopeError(message)
 
     return user_id
 

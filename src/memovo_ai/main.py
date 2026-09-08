@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from memovo_ai.api.errors import register_exception_handlers
 from memovo_ai.api.router import api_router
 from memovo_ai.embeddings.models import EmbeddingError
 from memovo_ai.services.memory_search import MemorySearchService
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
         summary="Memory processing and retrieval for Memovo.",
         lifespan=lifespan,
     )
+    register_exception_handlers(application)
     application.include_router(api_router)
 
     return application
