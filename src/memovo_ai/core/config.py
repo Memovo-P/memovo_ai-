@@ -8,7 +8,14 @@ so far; later phases add their own sections rather than one growing object.
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-__all__ = ["DEFAULT_EMBEDDING_DIMENSION", "DEFAULT_EMBEDDING_MODEL", "EmbeddingSettings"]
+__all__ = [
+    "DEFAULT_EMBEDDING_DIMENSION",
+    "DEFAULT_EMBEDDING_MODEL",
+    "DEFAULT_SEARCH_SIMILARITY_THRESHOLD",
+    "DEFAULT_SEARCH_TOP_K",
+    "EmbeddingSettings",
+    "SearchSettings",
+]
 
 #: Locked by the Sprint 1 model decision.
 DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
@@ -62,3 +69,43 @@ class EmbeddingSettings(BaseSettings):
     def resolved_device(self) -> str | None:
         """``None`` when the device should be auto-selected by the runtime."""
         return None if self.device == "auto" else self.device
+
+
+#: Locked by doc 01, decisions 10 and 9. Literals rather than imports of
+#: ``retrieval.filtering``: ``core`` sits below ``retrieval``, and Phase 13's
+#: search service will read this module. Tests assert the values agree.
+DEFAULT_SEARCH_TOP_K = 5
+DEFAULT_SEARCH_SIMILARITY_THRESHOLD = 0.75
+
+
+class SearchSettings(BaseSettings):
+    """Configuration for memory retrieval.
+
+    Environment variables use the ``MEMOVO_SEARCH_`` prefix, so ``top_k``
+    reads from ``MEMOVO_SEARCH_TOP_K``.
+
+    The defaults are the locked MVP values. Doc 05 section 13 evaluates
+    thresholds from 0.60 to 0.85, and these settings exist so that evaluation
+    can sweep them -- not so production can drift away from 0.75 without a
+    product decision.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_SEARCH_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    #: Chunks requested from the vector engine per query.
+    top_k: int = Field(default=DEFAULT_SEARCH_TOP_K, ge=1)
+
+    #: Minimum score for a chunk to count as relevant. Compared inclusively.
+    #: No range is imposed: the similarity metric is recommended but not
+    #: locked (doc 01, section 7), and an unbounded metric such as inner
+    #: product would not fit ``[0, 1]``.
+    similarity_threshold: float = Field(
+        default=DEFAULT_SEARCH_SIMILARITY_THRESHOLD,
+        allow_inf_nan=False,
+    )

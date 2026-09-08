@@ -2,7 +2,11 @@
 
 import pytest
 
-from memovo_ai.core.config import DEFAULT_EMBEDDING_MODEL, EmbeddingSettings
+from memovo_ai.core.config import (
+    DEFAULT_EMBEDDING_MODEL,
+    EmbeddingSettings,
+    SearchSettings,
+)
 from memovo_ai.embeddings import EMBEDDING_DIMENSION
 
 pytestmark = pytest.mark.unit
@@ -17,6 +21,8 @@ def _clear_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "MEMOVO_EMBEDDING_DEVICE",
         "MEMOVO_EMBEDDING_BATCH_SIZE",
         "MEMOVO_EMBEDDING_QUERY_PROMPT_NAME",
+        "MEMOVO_SEARCH_TOP_K",
+        "MEMOVO_SEARCH_SIMILARITY_THRESHOLD",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -110,3 +116,61 @@ def test_module_imports_cleanly_from_a_cold_interpreter(module: str) -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+# --------------------------------------------------------------------------
+# Search settings
+# --------------------------------------------------------------------------
+def test_search_defaults_are_the_locked_mvp_values() -> None:
+    """Top-K 5 and threshold 0.75 (doc 01, decisions 9 and 10)."""
+    config = SearchSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert config.top_k == 5
+    assert config.similarity_threshold == 0.75
+
+
+def test_search_config_agrees_with_the_retrieval_layer() -> None:
+    """`core` cannot import `retrieval`, so the locked values are duplicated."""
+    from memovo_ai.core.config import DEFAULT_SEARCH_SIMILARITY_THRESHOLD
+    from memovo_ai.retrieval import DEFAULT_SIMILARITY_THRESHOLD
+
+    assert DEFAULT_SEARCH_SIMILARITY_THRESHOLD == DEFAULT_SIMILARITY_THRESHOLD
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "attribute", "expected"),
+    [
+        ("MEMOVO_SEARCH_TOP_K", "10", "top_k", 10),
+        ("MEMOVO_SEARCH_SIMILARITY_THRESHOLD", "0.6", "similarity_threshold", 0.6),
+    ],
+)
+def test_search_environment_overrides_are_applied(
+    monkeypatch: pytest.MonkeyPatch,
+    variable: str,
+    value: str,
+    attribute: str,
+    expected: object,
+) -> None:
+    """Doc 05 section 13 sweeps thresholds; these settings make that possible."""
+    monkeypatch.setenv(variable, value)
+
+    assert getattr(SearchSettings(_env_file=None), attribute) == expected  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("top_k", [0, -1])
+def test_a_non_positive_top_k_is_rejected(top_k: int) -> None:
+    with pytest.raises(ValueError, match="greater than or equal to 1"):
+        SearchSettings(_env_file=None, top_k=top_k)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("threshold", ["nan", "inf", "-inf"])
+def test_a_non_finite_threshold_is_rejected(threshold: str) -> None:
+    with pytest.raises(ValueError, match="should be a finite number"):
+        SearchSettings(_env_file=None, similarity_threshold=float(threshold))  # type: ignore[call-arg]
+
+
+def test_search_settings_are_frozen() -> None:
+    config = SearchSettings(_env_file=None)  # type: ignore[call-arg]
+
+    with pytest.raises(ValueError, match="frozen"):
+        config.top_k = 10  # type: ignore[misc]
