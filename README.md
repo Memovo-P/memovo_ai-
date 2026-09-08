@@ -101,7 +101,7 @@ written, rather than all at once as empty scaffolding.
 | 04 - Deterministic chunk IDs | Complete |
 | 05 - Embedding provider abstraction | Complete |
 | 06 - Qwen3 embedding integration | Complete |
-| 07 - Memory processor service | Not started |
+| 07 - Memory processor service | Complete |
 | 08 - `/ai/memories/process` route | Not started |
 | 09 - Vector search provider | Complete |
 | 10 - User isolation enforcement | Complete |
