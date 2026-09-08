@@ -66,5 +66,6 @@ written, rather than all at once as empty scaffolding.
 | 02 - Canonical content preparation | Complete |
 | 03 - Hybrid chunker | Complete |
 | 04 - Deterministic chunk IDs | Complete |
-| 05 - Embedding provider abstraction | Not started |
-| 06+ | Not started |
+| 05 - Embedding provider abstraction | Complete |
+| 06 - Qwen3 embedding integration | Not started |
+| 07+ | Not started |
