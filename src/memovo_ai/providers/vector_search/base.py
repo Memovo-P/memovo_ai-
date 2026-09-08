@@ -22,7 +22,13 @@ from typing import Protocol, runtime_checkable
 
 from memovo_ai.retrieval.models import VectorSearchHit
 
-__all__ = ["VECTOR_WRITE_OPERATIONS", "VectorSearchProvider"]
+__all__ = [
+    "VECTOR_WRITE_OPERATIONS",
+    "UserIsolationError",
+    "UserScopedVectorSearchProvider",
+    "VectorSearchProvider",
+    "validate_user_scope",
+]
 
 #: Operation names a read-only provider must never expose. Asserted by tests
 #: against both the protocol and every implementation.
@@ -48,3 +54,86 @@ class VectorSearchProvider(Protocol):
         would make the threshold untestable.
         """
         ...
+
+
+class UserIsolationError(Exception):
+    """A provider returned a chunk belonging to someone other than the caller.
+
+    This is never an expected condition. It means the ``user_id`` pre-filter
+    did not reach the vector engine, or reached it wrongly -- a critical
+    security failure (doc 06, section 3), not a recoverable one.
+
+    Phase 15 decides the public mapping. It is a service defect rather than a
+    bad request, so ``INTERNAL_ERROR`` fits better than ``VECTOR_SEARCH_FAILED``;
+    either way it must not be presented as retryable, because retrying a
+    misconfigured filter leaks the same rows again.
+    """
+
+
+def validate_user_scope(user_id: str) -> str:
+    """Return ``user_id`` unchanged after checking it can scope a search.
+
+    A blank identifier is rejected outright: an adapter handed an empty filter
+    may match every row in a shared collection, which is precisely the
+    cross-user leak the pre-filter exists to prevent.
+
+    The value is returned verbatim, never trimmed or normalized. Silently
+    altering an identity would search as somebody else.
+    """
+    if not isinstance(user_id, str) or not user_id.strip():
+        message = "user_id must be a non-blank string to scope a vector search"
+        raise ValueError(message)
+
+    return user_id
+
+
+class UserScopedVectorSearchProvider:
+    """Enforces the user-isolation invariant around any provider.
+
+    Two guarantees, in order:
+
+    1. The search is refused unless ``user_id`` can actually scope it.
+    2. Every returned hit is verified to belong to that user.
+
+    Step 2 **raises** on a foreign hit; it does not drop it. That distinction
+    is the whole point. Dropping would be post-filtering -- it would mask a
+    broken pre-filter, silently return fewer than ``top_k`` results, and leave
+    the leak in place for whatever code forgot to wrap the provider. Raising
+    fails closed and surfaces the defect.
+
+    This is defence in depth, not the isolation mechanism. Correctness still
+    comes from the adapter passing ``user_id`` to the vector engine as a
+    pre-filter, so that another user's chunks are never ranked at all.
+    """
+
+    __slots__ = ("_provider",)
+
+    def __init__(self, provider: VectorSearchProvider) -> None:
+        self._provider = provider
+
+    async def search(
+        self,
+        *,
+        user_id: str,
+        query_embedding: Sequence[float],
+        top_k: int,
+    ) -> list[VectorSearchHit]:
+        scoped = validate_user_scope(user_id)
+
+        hits = await self._provider.search(
+            user_id=scoped,
+            query_embedding=query_embedding,
+            top_k=top_k,
+        )
+
+        foreign = sum(1 for hit in hits if hit.user_id != scoped)
+        if foreign:
+            # Counts only: no identifiers, no content. This message reaches
+            # logs, and CLAUDE.md forbids logging retrieved chunk text.
+            message = (
+                f"vector search returned {foreign} of {len(hits)} chunks owned by "
+                "another user; the user pre-filter is not being applied"
+            )
+            raise UserIsolationError(message)
+
+        return hits

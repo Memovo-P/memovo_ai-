@@ -354,7 +354,13 @@ def test_a_record_rejects_a_negative_chunk_index() -> None:
 def test_a_hit_rejects_a_negative_chunk_index() -> None:
     with pytest.raises(ValueError, match="must not be negative"):
         VectorSearchHit(
-            memory_id="m", chunk_id="c", chunk_index=-1, content="x", score=0.9, title="t"
+            user_id="u",
+            memory_id="m",
+            chunk_id="c",
+            chunk_index=-1,
+            content="x",
+            score=0.9,
+            title="t",
         )
 
 
@@ -362,7 +368,13 @@ def test_a_hit_rejects_a_negative_chunk_index() -> None:
 def test_a_hit_rejects_a_non_finite_score(score: float) -> None:
     with pytest.raises(ValueError, match="finite"):
         VectorSearchHit(
-            memory_id="m", chunk_id="c", chunk_index=0, content="x", score=score, title="t"
+            user_id="u",
+            memory_id="m",
+            chunk_id="c",
+            chunk_index=0,
+            content="x",
+            score=score,
+            title="t",
         )
 
 
@@ -370,7 +382,7 @@ def test_a_hit_rejects_a_non_finite_score(score: float) -> None:
 def test_a_hit_does_not_constrain_the_score_range(score: float) -> None:
     """The similarity metric is not locked (doc 01, section 7)."""
     hit = VectorSearchHit(
-        memory_id="m", chunk_id="c", chunk_index=0, content="x", score=score, title="t"
+        user_id="u", memory_id="m", chunk_id="c", chunk_index=0, content="x", score=score, title="t"
     )
 
     assert hit.score == score
@@ -378,7 +390,7 @@ def test_a_hit_does_not_constrain_the_score_range(score: float) -> None:
 
 def test_tags_default_to_empty() -> None:
     hit = VectorSearchHit(
-        memory_id="m", chunk_id="c", chunk_index=0, content="x", score=0.9, title="t"
+        user_id="u", memory_id="m", chunk_id="c", chunk_index=0, content="x", score=0.9, title="t"
     )
 
     assert hit.tags == ()

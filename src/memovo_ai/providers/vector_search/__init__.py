@@ -8,7 +8,10 @@ tests.
 
 from memovo_ai.providers.vector_search.base import (
     VECTOR_WRITE_OPERATIONS,
+    UserIsolationError,
+    UserScopedVectorSearchProvider,
     VectorSearchProvider,
+    validate_user_scope,
 )
 from memovo_ai.providers.vector_search.fake import (
     FakeVectorSearchProvider,
@@ -20,6 +23,9 @@ __all__ = [
     "VECTOR_WRITE_OPERATIONS",
     "FakeVectorSearchProvider",
     "SearchCall",
+    "UserIsolationError",
+    "UserScopedVectorSearchProvider",
     "VectorRecord",
     "VectorSearchProvider",
+    "validate_user_scope",
 ]

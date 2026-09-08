@@ -19,6 +19,14 @@ class VectorSearchHit:
     lookup: the AI Service never reads MongoDB, so the Memory's title and
     tags have to travel with the hit.
 
+    ``user_id`` is the owner recorded in the vector index. It exists so
+    isolation can be *verified* after the fact, not so it can be filtered on:
+    a hit belonging to anyone but the requesting user means the pre-filter is
+    broken, and
+    :class:`~memovo_ai.providers.vector_search.base.UserScopedVectorSearchProvider`
+    raises rather than quietly discarding it. It is never serialized into an
+    API response.
+
     ``score`` is whatever similarity the vector engine reports. No range is
     enforced -- the similarity metric is recommended but not locked (doc 01,
     section 7), so bounding it here would harden a decision the architecture
@@ -28,6 +36,7 @@ class VectorSearchHit:
     returns it.
     """
 
+    user_id: str
     memory_id: str
     chunk_id: str
     chunk_index: int

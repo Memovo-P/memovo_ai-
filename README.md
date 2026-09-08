@@ -90,4 +90,5 @@ written, rather than all at once as empty scaffolding.
 | 07 - Memory processor service | Not started |
 | 08 - `/ai/memories/process` route | Not started |
 | 09 - Vector search provider | Complete |
-| 10+ | Not started |
+| 10 - User isolation enforcement | Complete |
+| 11+ | Not started |

@@ -117,6 +117,7 @@ class FakeVectorSearchProvider:
 
         return [
             VectorSearchHit(
+                user_id=record.user_id,
                 memory_id=record.memory_id,
                 chunk_id=record.chunk_id,
                 chunk_index=record.chunk_index,
