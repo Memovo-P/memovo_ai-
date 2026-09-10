@@ -111,6 +111,6 @@ written, rather than all at once as empty scaffolding.
 | 13 - Memory search service | Complete |
 | 14 - `/ai/memories/search` route | Complete |
 | 15 - Error contract | Complete |
-| 16 - Reprocessing contract tests | Not started |
+| 16 - Reprocessing contract tests | Complete |
 | 17 - Link support (`about`, `source`) | Complete |
 | 18+ | Not started |
