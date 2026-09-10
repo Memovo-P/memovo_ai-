@@ -60,12 +60,14 @@ class EmbeddingSettings(BaseSettings):
     batch_size: int = Field(default=32, ge=1)
 
     #: Name of the model's query instruction prompt, applied to queries only.
-    #: Empty disables it. Qwen3-Embedding's card recommends a query
-    #: instruction, but enabling it by default would ship behaviour this
-    #: repository cannot verify without downloading weights -- the embedding
-    #: integration test reports whether the prompt exists, so the default can
-    #: be flipped on evidence.
-    query_prompt_name: str = ""
+    #: Empty disables it.
+    #:
+    #: Enabled after the Phase 06 benchmark confirmed the model defines it
+    #: ("Instruct: Given a web search query, retrieve relevant passages...")
+    #: and that it improves separation: mean relevant-to-best-unrelated margin
+    #: 0.19 -> 0.24, worst unrelated score 0.657 -> 0.621, worst no-match
+    #: score 0.319 -> 0.268, Arabic relevant mean 0.630 -> 0.678.
+    query_prompt_name: str = "query"
 
     @property
     def resolved_device(self) -> str | None:

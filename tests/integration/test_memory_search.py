@@ -60,7 +60,7 @@ def make_app(records: Sequence[VectorRecord] = ()) -> FastAPI:
         vector_search=FakeVectorSearchProvider(records),
         settings=SearchSettings(_env_file=None),  # type: ignore[call-arg]
     )
-    application = create_app()
+    application = create_app(load_services=False)
     application.dependency_overrides[get_memory_search_service] = lambda: service
     return application
 
@@ -263,14 +263,14 @@ def test_the_service_is_resolved_through_dependency_injection() -> None:
 def test_startup_survives_a_missing_model_runtime() -> None:
     """A failed load leaves an unavailable state instead of refusing to start
     (doc 06, section 9)."""
-    with TestClient(create_app()) as http:
+    with TestClient(create_app(load_services=False)) as http:
         assert http.get("/openapi.json").status_code == 200
 
 
 def test_an_unavailable_model_does_not_answer_queries() -> None:
     """Without the extra installed the service cannot be built, and the
     request must fail rather than silently report no memories."""
-    with TestClient(create_app(), raise_server_exceptions=False) as http:
+    with TestClient(create_app(load_services=False), raise_server_exceptions=False) as http:
         response = http.post(ENDPOINT, json={"query": "q", "userId": USER})
 
     assert response.status_code != 200

@@ -4,7 +4,11 @@ Sprint 1 keeps this layer model-free: the interface, the embedding invariants,
 and a validating wrapper. The Qwen3 implementation arrives at Phase 06.
 """
 
-from memovo_ai.embeddings.base import EmbeddingProvider, ValidatedEmbeddingProvider
+from memovo_ai.embeddings.base import (
+    EmbeddingProvider,
+    NormalizingEmbeddingProvider,
+    ValidatedEmbeddingProvider,
+)
 from memovo_ai.embeddings.models import (
     EMBEDDING_DIMENSION,
     Embedding,
@@ -26,6 +30,7 @@ __all__ = [
     "EmbeddingProvider",
     "InvalidEmbeddingError",
     "ModelUnavailableError",
+    "NormalizingEmbeddingProvider",
     "Qwen3EmbeddingProvider",
     "TextEncoder",
     "ValidatedEmbeddingProvider",

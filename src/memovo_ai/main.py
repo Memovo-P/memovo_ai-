@@ -23,6 +23,13 @@ from memovo_ai.embeddings.models import EmbeddingError
 __all__ = ["app", "create_app"]
 
 
+#: Set on the app when it must not build services at startup. Tests supply
+#: their own through ``dependency_overrides``; loading a real model just to
+#: replace it is slow and makes the suite depend on whether the optional
+#: ``embeddings`` extra happens to be installed.
+_SKIP_STARTUP_SERVICES = "memovo_skip_startup_services"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the services once, at startup, sharing one loaded model.
@@ -31,9 +38,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runtime import to ``load()``, so nothing heavy is pulled in until a model
     is actually requested.
     """
+    skip = getattr(app.state, _SKIP_STARTUP_SERVICES, False)
+
     services: Services | None
     try:
-        services = build_services()
+        services = None if skip else build_services()
     except (EmbeddingError, ValueError):
         # Startup continues in an unavailable state. The dependencies raise
         # ModelUnavailableError per request, which Phase 15 maps to a
@@ -47,11 +56,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.memory_processor_service = None
 
 
-def create_app() -> FastAPI:
+def create_app(*, load_services: bool = True) -> FastAPI:
     """Build the application.
 
-    Tests override ``get_memory_search_service`` rather than starting the real
-    model, so nothing here downloads weights.
+    Args:
+        load_services: Build the services at startup. Tests pass ``False`` and
+            supply their own through ``dependency_overrides``, which keeps the
+            suite fast and, more importantly, makes it behave identically
+            whether or not the optional ``embeddings`` extra is installed.
+            Production always uses the default.
     """
     application = FastAPI(
         title="Memovo AI Service",
@@ -59,6 +72,7 @@ def create_app() -> FastAPI:
         summary="Memory processing and retrieval for Memovo.",
         lifespan=lifespan,
     )
+    setattr(application.state, _SKIP_STARTUP_SERVICES, not load_services)
     register_exception_handlers(application)
     application.include_router(api_router)
 

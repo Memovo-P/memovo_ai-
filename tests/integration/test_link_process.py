@@ -52,7 +52,7 @@ class StubEmbeddings:
 
 
 def build_app() -> FastAPI:
-    application = create_app()
+    application = create_app(load_services=False)
     application.dependency_overrides[get_memory_processor_service] = lambda: MemoryProcessorService(
         embedding_provider=StubEmbeddings()
     )

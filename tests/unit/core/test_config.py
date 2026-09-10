@@ -36,8 +36,16 @@ def test_defaults_match_the_sprint_1_decisions() -> None:
     assert config.batch_size == 32
 
 
-def test_query_prompt_is_disabled_by_default() -> None:
-    assert EmbeddingSettings(_env_file=None).query_prompt_name == ""  # type: ignore[call-arg]
+def test_the_query_prompt_is_enabled_by_default() -> None:
+    """Enabled after the Phase 06 benchmark confirmed the model defines it
+    and that it improves relevant-vs-unrelated separation."""
+    assert EmbeddingSettings(_env_file=None).query_prompt_name == "query"  # type: ignore[call-arg]
+
+
+def test_the_query_prompt_can_still_be_disabled() -> None:
+    config = EmbeddingSettings(_env_file=None, query_prompt_name="")  # type: ignore[call-arg]
+
+    assert config.query_prompt_name == ""
 
 
 @pytest.mark.parametrize(

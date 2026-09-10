@@ -87,7 +87,7 @@ def app_with(
     records: Sequence[VectorRecord] = (),
     service: object | None = None,
 ) -> FastAPI:
-    application = create_app()
+    application = create_app(load_services=False)
 
     if service is None:
         service = MemorySearchService(
@@ -164,7 +164,7 @@ def test_invalid_request_on_a_wrong_method(client: TestClient) -> None:
 
 
 def test_model_unavailable_when_the_model_failed_to_load() -> None:
-    for http in client_of(create_app()):
+    for http in client_of(create_app(load_services=False)):
         response = http.post(ENDPOINT, json=VALID_BODY)
 
         assert response.status_code == 503

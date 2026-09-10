@@ -42,7 +42,7 @@ def app_with(*, target: int = 500, overlap: int = 50) -> FastAPI:
         embedding_provider=StubEmbeddings(),
         chunker=HybridChunker(config=ChunkingConfig(target_tokens=target, overlap_tokens=overlap)),
     )
-    application = create_app()
+    application = create_app(load_services=False)
     application.dependency_overrides[get_memory_processor_service] = lambda: service
     return application
 
@@ -240,7 +240,7 @@ def test_an_entirely_empty_memory_returns_no_chunks(client: TestClient) -> None:
 # --------------------------------------------------------------------------
 def test_an_unavailable_model_reports_model_unavailable() -> None:
     """No dependency override: startup could not build the service."""
-    for http in client_of(create_app()):
+    for http in client_of(create_app(load_services=False)):
         response = http.post(ENDPOINT, json=VALID_BODY)
 
         assert response.status_code == 503

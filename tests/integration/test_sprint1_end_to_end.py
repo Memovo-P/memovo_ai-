@@ -84,7 +84,7 @@ class BagOfWordsEmbeddings:
 def build_app(records: Sequence[VectorRecord] = ()) -> FastAPI:
     """One embedding provider shared by both services, as in production."""
     embeddings = BagOfWordsEmbeddings()
-    application = create_app()
+    application = create_app(load_services=False)
     application.dependency_overrides[get_memory_processor_service] = lambda: MemoryProcessorService(
         embedding_provider=embeddings
     )

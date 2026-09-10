@@ -55,7 +55,9 @@ MEMOVO_RUN_EMBEDDING_INTEGRATION=1 uv run pytest tests/integration -s
 ```
 
 It downloads roughly 1.2 GB on first run and reports the model's output
-normalization and query-prompt availability.
+normalization and query-prompt availability. Because the app skips building
+services at startup under test, the suite behaves identically whether or not
+this extra is installed.
 
 ## Verification gate
 

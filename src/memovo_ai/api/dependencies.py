@@ -24,7 +24,11 @@ from memovo_ai.core.config import (
     ProviderSettings,
     SearchSettings,
 )
-from memovo_ai.embeddings.base import EmbeddingProvider, ValidatedEmbeddingProvider
+from memovo_ai.embeddings.base import (
+    EmbeddingProvider,
+    NormalizingEmbeddingProvider,
+    ValidatedEmbeddingProvider,
+)
 from memovo_ai.embeddings.models import ModelUnavailableError
 from memovo_ai.embeddings.qwen3 import Qwen3EmbeddingProvider
 from memovo_ai.providers.vector_search.base import VectorSearchProvider
@@ -53,7 +57,15 @@ class Services:
 
 
 def build_embedding_provider(settings: EmbeddingSettings | None = None) -> EmbeddingProvider:
-    """Load the embedding model once and wrap it in output validation.
+    """Load the embedding model once, normalize its output, then validate it.
+
+    Order matters. Qwen3 runs in bfloat16, so its own normalization is only
+    accurate to about 1e-3; rescaling in float64 first is what lets the
+    validator enforce ``expect_unit_norm`` at its existing tolerance instead
+    of the tolerance being widened to accommodate model precision.
+
+    True unit vectors also make cosine and inner product agree, so the vector
+    index cannot be configured to score differently from this service.
 
     Raises:
         ModelUnavailableError: if the runtime is missing or the model fails
@@ -62,8 +74,9 @@ def build_embedding_provider(settings: EmbeddingSettings | None = None) -> Embed
     resolved = settings if settings is not None else EmbeddingSettings()
 
     return ValidatedEmbeddingProvider(
-        Qwen3EmbeddingProvider.load(resolved),
+        NormalizingEmbeddingProvider(Qwen3EmbeddingProvider.load(resolved)),
         dimension=resolved.dimension,
+        expect_unit_norm=True,
     )
 
 

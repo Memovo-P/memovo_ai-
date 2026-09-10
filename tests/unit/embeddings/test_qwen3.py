@@ -171,8 +171,8 @@ async def test_query_is_embedded_as_one_item() -> None:
     assert encoder.calls[0][0] == ["query text"]
 
 
-async def test_no_query_prompt_is_sent_by_default() -> None:
-    """Enabling the instruction prompt is deferred until it can be verified."""
+async def test_no_query_prompt_is_sent_when_configured_empty() -> None:
+    """An empty setting disables the instruction prompt entirely."""
     encoder = FakeEncoder()
 
     await make_provider(encoder).embed_query("query")
