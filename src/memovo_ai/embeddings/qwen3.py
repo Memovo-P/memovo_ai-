@@ -31,7 +31,7 @@ even a naive mapping at Phase 15 cannot leak internals (doc 06, section 6).
 
 import asyncio
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Protocol, cast
 
 from memovo_ai.core.config import EmbeddingSettings
 from memovo_ai.embeddings.models import (
@@ -51,8 +51,14 @@ class TextEncoder(Protocol):
     a fake without importing the real library.
     """
 
-    def encode(self, sentences: list[str], **kwargs: object) -> object:
-        """Return one vector per sentence, in order."""
+    def encode(self, sentences: list[str], /, **kwargs: object) -> object:
+        """Return one vector per sentence, in order.
+
+        Positional-only: this provider always calls it positionally, and
+        ``SentenceTransformer`` names the parameter ``inputs``. Without the
+        marker the protocol would not match the real encoder on a parameter
+        name that is never used.
+        """
         ...
 
 
@@ -122,7 +128,11 @@ class Qwen3EmbeddingProvider:
             message = "embedding model could not be loaded"
             raise ModelUnavailableError(message) from error
 
-        return cls(encoder, settings=resolved)
+        # SentenceTransformer.encode is overloaded across a large union of
+        # input types, so it does not match TextEncoder structurally even
+        # though the call this provider makes is valid. The cast is confined
+        # to this boundary; everything above it sees the narrow protocol.
+        return cls(cast("TextEncoder", encoder), settings=resolved)
 
     @property
     def settings(self) -> EmbeddingSettings:

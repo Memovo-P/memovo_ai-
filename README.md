@@ -87,6 +87,11 @@ with `MODEL_UNAVAILABLE` rather than silently reporting no memories.
 This service is internal and must not be exposed publicly; the Backend is the
 only caller.
 
+## Retrieval evaluation
+
+`eval/` holds the quality dataset and the threshold sweep. See
+[eval/README.md](eval/README.md) for how to run it and the current results.
+
 ## Repository layout
 
 The target layout is defined in `memovo-ai-docs/04_REPOSITORY_STRUCTURE.md`.
@@ -115,4 +120,6 @@ written, rather than all at once as empty scaffolding.
 | 15 - Error contract | Complete |
 | 16 - Reprocessing contract tests | Complete |
 | 17 - Link support (`about`, `source`) | Complete |
-| 18+ | Not started |
+| 18, 19 | Not started |
+| 20 - Retrieval evaluation | Complete |
+| 21+ | Not started |
