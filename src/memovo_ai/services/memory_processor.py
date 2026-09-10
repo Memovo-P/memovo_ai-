@@ -18,8 +18,13 @@ only the changed chunks (doc 01, decision 25). This service is stateless with
 respect to previous versions of a Memory: it holds no prior chunk set and
 computes no delta. The Backend reconciles old against new.
 
+Notes and Links follow the same path. For a Link the page content was
+extracted by the **Backend** and arrives in ``description``; this service
+never fetches a URL, scrapes a page or crawls anything.
+
 What this service must never do (doc 03, Phase 07): insert or update MongoDB,
-insert, update or delete vectors, or perform authentication or authorization.
+insert, update or delete vectors, perform authentication or authorization, or
+reach out to the network.
 It returns chunks and embeddings; the Backend persists them.
 """
 
@@ -30,6 +35,7 @@ from memovo_ai.core.hashing import chunk_id
 from memovo_ai.embeddings.base import EmbeddingProvider
 from memovo_ai.schemas.errors import ErrorCode
 from memovo_ai.schemas.process import (
+    LinkSource,
     ProcessedChunk,
     ProcessMemoryRequest,
     ProcessMemoryResponse,
@@ -37,6 +43,24 @@ from memovo_ai.schemas.process import (
 from memovo_ai.understanding.content import compose_canonical_content
 
 __all__ = ["MemoryProcessorService"]
+
+
+def _embeddable_source(source: LinkSource | None) -> list[str]:
+    """Pick the provenance fields worth putting in front of the embedder.
+
+    ``siteName`` and ``publishedAt`` are natural-language-ish and help
+    retrieval ("what did I save from the MongoDB blog?").
+
+    ``favicon`` and ``ogImage`` are deliberately excluded. They are URLs to
+    binary assets: they carry no semantic meaning, and embedding them would
+    dilute the chunk with tokens that can never match a user's query.
+
+    Missing and ``null`` fields are skipped, never rendered as "None".
+    """
+    if source is None:
+        return []
+
+    return [value for value in (source.site_name, source.published_at) if value]
 
 
 class MemoryProcessorService:
@@ -60,6 +84,8 @@ class MemoryProcessorService:
             description=request.description,
             why_saved=request.why_saved,
             tags=request.tags,
+            about=request.about,
+            source=_embeddable_source(request.source),
         )
 
         chunks = self._chunk(content)

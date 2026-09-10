@@ -76,8 +76,9 @@ uv run mypy src
 uv run uvicorn memovo_ai.main:app --reload
 ```
 
-Both Sprint 1 endpoints are live: `POST /ai/memories/process` and
-`POST /ai/memories/search`. Without the `embeddings` extra installed the model
+Both Sprint 1 endpoints are live: `POST /ai/memories/process` (Notes and
+Links) and `POST /ai/memories/search`. Link page content is extracted by the
+Backend and sent in the request; this service never fetches a URL. Without the `embeddings` extra installed the model
 cannot load, so the service starts in an unavailable state and requests fail
 with `MODEL_UNAVAILABLE` rather than silently reporting no memories.
 
@@ -110,4 +111,6 @@ written, rather than all at once as empty scaffolding.
 | 13 - Memory search service | Complete |
 | 14 - `/ai/memories/search` route | Complete |
 | 15 - Error contract | Complete |
-| 16+ | Not started |
+| 16 - Reprocessing contract tests | Not started |
+| 17 - Link support (`about`, `source`) | Complete |
+| 18+ | Not started |

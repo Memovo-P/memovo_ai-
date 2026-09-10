@@ -55,7 +55,12 @@ def test_request_public_field_names_are_exact() -> None:
         "description",
         "whySaved",
         "tags",
+        # Phase 17 Link fields. Optional, so a Note request is unchanged.
+        "about",
+        "source",
     }
+    # The required set is the part that must never drift: adding Link support
+    # must not make any Note field optional, nor add a new required field.
     assert set(schema["required"]) == {
         "memoryId",
         "title",
@@ -66,9 +71,14 @@ def test_request_public_field_names_are_exact() -> None:
 
 
 def test_request_round_trips_to_the_documented_json() -> None:
+    """A Note round-trips unchanged once unset Link fields are dropped.
+
+    ``about`` and ``source`` are absent from a Note, so they serialize as
+    ``null``; excluding them is what the Backend would send back.
+    """
     request = ProcessMemoryRequest.model_validate_json(REQUEST_JSON)
 
-    assert json.loads(request.model_dump_json()) == json.loads(REQUEST_JSON)
+    assert json.loads(request.model_dump_json(exclude_none=True)) == json.loads(REQUEST_JSON)
 
 
 def test_documented_response_validates() -> None:

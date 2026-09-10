@@ -49,10 +49,14 @@ def test_extra_field_is_rejected() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ["userId", "embeddingVersion", "createdAt", "updatedAt", "jobId", "source", "about"],
+    ["userId", "embeddingVersion", "createdAt", "updatedAt", "jobId"],
 )
 def test_out_of_scope_fields_are_rejected(field: str) -> None:
-    """Sprint 1 Note requests carry none of these. Link fields are Phase 17."""
+    """Sprint 1 requests carry none of these.
+
+    ``about`` and ``source`` were on this list until Phase 17; they are now
+    part of the Link contract and are covered by their own tests.
+    """
     with pytest.raises(ValidationError):
         ProcessMemoryRequest.model_validate({**VALID_REQUEST, field: "x"})
 

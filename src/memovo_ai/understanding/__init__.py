@@ -6,9 +6,12 @@ the endpoint already identifies the operation (doc 01, section 6).
 """
 
 from memovo_ai.understanding.content import (
+    ABOUT_LABEL,
     CANONICAL_CONTENT_VERSION,
     CONTENT_LABEL,
     SECTION_SEPARATOR,
+    SOURCE_LABEL,
+    SOURCE_SEPARATOR,
     TAG_SEPARATOR,
     TAGS_LABEL,
     TITLE_LABEL,
@@ -17,9 +20,12 @@ from memovo_ai.understanding.content import (
 )
 
 __all__ = [
+    "ABOUT_LABEL",
     "CANONICAL_CONTENT_VERSION",
     "CONTENT_LABEL",
     "SECTION_SEPARATOR",
+    "SOURCE_LABEL",
+    "SOURCE_SEPARATOR",
     "TAGS_LABEL",
     "TAG_SEPARATOR",
     "TITLE_LABEL",

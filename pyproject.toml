@@ -89,6 +89,10 @@ select = [
 "tests/**" = [
     "S101",   # assert is the point of a test
     "ANN201", # test functions need no return annotation
+    # Multilingual fixtures deliberately contain non-ASCII text; RUF001's
+    # suggested ASCII substitutions would defeat what those tests prove.
+    "RUF001",
+    "RUF003",
 ]
 # The sentence splitter exists to match non-ASCII punctuation (Arabic and CJK
 # terminators). RUF001/RUF003 flag exactly the characters the module is for,

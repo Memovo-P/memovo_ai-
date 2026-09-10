@@ -21,15 +21,22 @@ The representation follows ``03_IMPLEMENTATION_PLAN.md``, Phase 02::
     mongodb, vector-search, ai
 
 Embedding input is Title + Description/Content + WhySaved + Tags (doc 01,
-locked decisions 1 and 2). Section order is fixed and never varies.
+locked decisions 1 and 2), plus About and Source for a Link. Section order is
+fixed and never varies.
+
+For a Link, the page content in ``description`` was extracted by the Backend.
+This module -- and this service -- never fetches anything.
 """
 
 from collections.abc import Sequence
 
 __all__ = [
+    "ABOUT_LABEL",
     "CANONICAL_CONTENT_VERSION",
     "CONTENT_LABEL",
     "SECTION_SEPARATOR",
+    "SOURCE_LABEL",
+    "SOURCE_SEPARATOR",
     "TAGS_LABEL",
     "TAG_SEPARATOR",
     "TITLE_LABEL",
@@ -50,8 +57,13 @@ TITLE_LABEL = "Title:"
 CONTENT_LABEL = "Content:"
 WHY_SAVED_LABEL = "Why Saved:"
 TAGS_LABEL = "Tags:"
+#: Link context written by the user (doc 01, locked decision 28).
+ABOUT_LABEL = "About:"
+#: Link provenance the Backend extracted (doc 01, locked decision 29).
+SOURCE_LABEL = "Source:"
 
 TAG_SEPARATOR = ", "
+SOURCE_SEPARATOR = ", "
 SECTION_SEPARATOR = "\n\n"
 
 
@@ -94,13 +106,24 @@ def compose_canonical_content(
     description: str,
     why_saved: str,
     tags: Sequence[str],
+    about: str | None = None,
+    source: Sequence[str] = (),
 ) -> str:
     """Compose the canonical text for a Memory.
 
-    Sections always appear in the order Title, Content, Why Saved, Tags. A
-    section whose value is empty after normalization is omitted entirely,
-    rather than emitted as a bare label with nothing under it -- an empty
-    labelled section would add tokens that carry no meaning to the embedding.
+    Sections always appear in the order Title, Content, About, Why Saved,
+    Source, Tags. A section whose value is empty after normalization is
+    omitted entirely, rather than emitted as a bare label with nothing under
+    it -- an empty labelled section would add tokens that carry no meaning to
+    the embedding.
+
+    ``about`` and ``source`` belong to Links and default to empty, so a Note
+    composes to exactly the same string it did before they existed. That is
+    what keeps existing chunk IDs stable.
+
+    ``source`` receives already-selected text parts rather than a schema
+    object, so this module stays free of transport types. Choosing which
+    provenance fields are worth embedding is the caller's job.
 
     Returns an empty string when every field is empty. Deciding whether that
     is a request error belongs to the processing service and the error
@@ -111,7 +134,9 @@ def compose_canonical_content(
     for label, value in (
         (TITLE_LABEL, _normalize_text(title)),
         (CONTENT_LABEL, _normalize_text(description)),
+        (ABOUT_LABEL, _normalize_text(about or "")),
         (WHY_SAVED_LABEL, _normalize_text(why_saved)),
+        (SOURCE_LABEL, SOURCE_SEPARATOR.join(_normalize_tags(source))),
         (TAGS_LABEL, TAG_SEPARATOR.join(_normalize_tags(tags))),
     ):
         if value:

@@ -11,6 +11,7 @@ from memovo_ai.schemas.common import BaseChunk, MemovoBaseModel
 from memovo_ai.schemas.errors import ErrorCode, ErrorDetail, ErrorResponse
 from memovo_ai.schemas.process import (
     PROCESS_INTENT,
+    LinkSource,
     ProcessedChunk,
     ProcessMemoryRequest,
     ProcessMemoryResponse,
@@ -33,6 +34,7 @@ __all__ = [
     "ErrorCode",
     "ErrorDetail",
     "ErrorResponse",
+    "LinkSource",
     "MemovoBaseModel",
     "ProcessMemoryRequest",
     "ProcessMemoryResponse",

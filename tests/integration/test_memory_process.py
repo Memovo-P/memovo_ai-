@@ -169,9 +169,7 @@ def test_a_missing_required_field_is_rejected(client: TestClient, field: str) ->
     assert response.json()["error"]["code"] == "INVALID_INPUT"
 
 
-@pytest.mark.parametrize(
-    "extra", ["userId", "embeddingVersion", "jobId", "source", "about", "createdAt"]
-)
+@pytest.mark.parametrize("extra", ["userId", "embeddingVersion", "jobId", "createdAt"])
 def test_an_out_of_scope_field_is_rejected(client: TestClient, extra: str) -> None:
     response = client.post(ENDPOINT, json={**VALID_BODY, extra: "x"})
 
