@@ -10,6 +10,7 @@ This service is internal. It must not be exposed publicly (doc 06, section 7);
 the Backend is the only caller.
 """
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -17,11 +18,15 @@ from fastapi import FastAPI
 
 from memovo_ai.api.dependencies import Services, build_services
 from memovo_ai.api.errors import register_exception_handlers
+from memovo_ai.api.middleware import RequestContextMiddleware
 from memovo_ai.api.router import api_router
+from memovo_ai.core.logging import configure_logging, log_event
 from memovo_ai.embeddings.models import EmbeddingError
 from memovo_ai.providers.vector_search.base import VectorSearchUnavailableError
 
 __all__ = ["app", "create_app"]
+
+_logger = logging.getLogger(__name__)
 
 
 #: Set on the app when it must not build services at startup. Tests supply
@@ -44,7 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     services: Services | None
     try:
         services = None if skip else build_services()
-    except (EmbeddingError, VectorSearchUnavailableError, ValueError):
+    except (EmbeddingError, VectorSearchUnavailableError, ValueError) as error:
         # Startup continues in an unavailable state. The dependencies raise
         # ModelUnavailableError per request, which Phase 15 maps to a
         # standardized 503 rather than an opaque crash loop.
@@ -55,8 +60,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # reports itself unavailable (doc 06, section 9).
         services = None
 
+        # The exception type, never its message: a driver error can carry a
+        # connection string (doc 06, section 6). The full traceback goes to
+        # the operator's log because this one is worth diagnosing.
+        log_event(
+            _logger,
+            "service.startup_failed",
+            level=logging.ERROR,
+            error_type=type(error).__name__,
+            exc_info=True,
+        )
+
     app.state.memory_search_service = services.memory_search if services else None
     app.state.memory_processor_service = services.memory_processor if services else None
+
+    log_event(_logger, "service.started", services_available=services is not None)
 
     yield
 
@@ -64,6 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.memory_processor_service = None
     if services is not None:
         await services.aclose()
+
+    log_event(_logger, "service.stopped")
 
 
 def create_app(*, load_services: bool = True) -> FastAPI:
@@ -76,6 +96,8 @@ def create_app(*, load_services: bool = True) -> FastAPI:
             whether or not the optional ``embeddings`` extra is installed.
             Production always uses the default.
     """
+    configure_logging()
+
     application = FastAPI(
         title="Memovo AI Service",
         version="0.1.0",
@@ -83,6 +105,7 @@ def create_app(*, load_services: bool = True) -> FastAPI:
         lifespan=lifespan,
     )
     setattr(application.state, _SKIP_STARTUP_SERVICES, not load_services)
+    application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)
     application.include_router(api_router)
 

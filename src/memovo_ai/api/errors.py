@@ -22,6 +22,7 @@ from memovo_ai.core.errors import (
     ERROR_RETRYABLE,
     AiServiceError,
 )
+from memovo_ai.core.logging import log_event, safe_text
 from memovo_ai.embeddings.models import (
     EmbeddingError,
     EmbeddingInferenceError,
@@ -144,19 +145,22 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _handle_unexpected(request: Request, exception: Exception) -> JSONResponse:
         code = classify(exception)
+        unclassified = code is ErrorCode.INTERNAL_ERROR
 
         # Only unclassified failures are defects worth a traceback. Expected
-        # conditions -- an unavailable model, a failed embedding -- log the
-        # exception type and nothing more, so operational noise stays low and
-        # no user content reaches the log. Phase 18 adds correlation ids.
-        if code is ErrorCode.INTERNAL_ERROR:
-            _logger.exception("unhandled error on %s", request.url.path)
-        else:
-            _logger.warning(
-                "%s on %s mapped to %s",
-                type(exception).__name__,
-                request.url.path,
-                code.value,
-            )
+        # conditions -- an unavailable model, a failed embedding -- record
+        # the exception type and nothing more, so operational noise stays
+        # low. The exception *message* is never logged either: a driver
+        # error can carry a connection string (doc 06, section 6).
+        log_event(
+            _logger,
+            "request.failed",
+            level=logging.ERROR if unclassified else logging.WARNING,
+            exc_info=unclassified,
+            route=safe_text(request.url.path, fallback="unmatched"),
+            error_type=type(exception).__name__,
+            error_code=code.value,
+            status=ERROR_HTTP_STATUS[code],
+        )
 
         return error_response(code)

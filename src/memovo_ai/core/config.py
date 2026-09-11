@@ -1,9 +1,13 @@
 """Runtime configuration.
 
 Settings are read from the environment (and a local ``.env``) with the
-``MEMOVO_`` prefix, matching doc 06, section 10. Only embedding settings exist
-so far; later phases add their own sections rather than one growing object.
+``MEMOVO_`` prefix, matching doc 06, section 10. Each concern owns a small
+settings class with its own prefix, rather than one object that grows with
+every phase.
 """
+
+import logging
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,8 +19,11 @@ __all__ = [
     "DEFAULT_SEARCH_SIMILARITY_THRESHOLD",
     "DEFAULT_SEARCH_TOP_K",
     "FAKE_VECTOR_PROVIDER",
+    "JSON_LOG_FORMAT",
+    "TEXT_LOG_FORMAT",
     "AtlasSettings",
     "EmbeddingSettings",
+    "LoggingSettings",
     "ProviderSettings",
     "SearchSettings",
 ]
@@ -192,3 +199,52 @@ class AtlasSettings(BaseSettings):
 
     def num_candidates(self, top_k: int) -> int:
         return max(top_k * self.num_candidates_multiplier, self.min_num_candidates)
+
+
+#: One JSON object per line, for log aggregation. The production default.
+JSON_LOG_FORMAT: Literal["json"] = "json"
+#: Flat ``key=value`` lines, easier to read while developing.
+TEXT_LOG_FORMAT: Literal["text"] = "text"
+
+
+class LoggingSettings(BaseSettings):
+    """Operational logging configuration (doc 03, Phase 18).
+
+    Environment variables use the ``MEMOVO_LOG_`` prefix, so ``level`` reads
+    from ``MEMOVO_LOG_LEVEL``.
+
+    There is deliberately no switch to log request or Memory content. Doc 06
+    section 5 forbids it outright, and a setting that could turn it on would
+    make the guarantee a configuration accident away from failing.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_LOG_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    #: Standard ``logging`` level name.
+    level: str = "INFO"
+
+    #: ``json`` or ``text``.
+    format: Literal["json", "text"] = JSON_LOG_FORMAT
+
+    #: Mixed into the ``userId`` hash. A hash of a low-entropy identifier can
+    #: be confirmed by guessing candidates; a per-deployment salt removes
+    #: that. Empty means unsalted, which still keeps raw identifiers out of
+    #: logs. Secret because it is only useful while it stays unknown.
+    user_salt: SecretStr = SecretStr("")
+
+    @property
+    def level_number(self) -> int:
+        """The configured level, falling back to ``INFO`` if unrecognised.
+
+        An unknown level must not stop the service from starting: losing log
+        detail is recoverable, refusing to boot over a typo is not.
+        """
+        resolved = logging.getLevelName(self.level.strip().upper())
+
+        return resolved if isinstance(resolved, int) else logging.INFO

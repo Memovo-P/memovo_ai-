@@ -28,10 +28,13 @@ reach out to the network.
 It returns chunks and embeddings; the Backend persists them.
 """
 
+import logging
+
 from memovo_ai.chunking.hybrid_chunker import HybridChunker
 from memovo_ai.chunking.models import Chunk
 from memovo_ai.core.errors import AiServiceError
 from memovo_ai.core.hashing import chunk_id
+from memovo_ai.core.logging import log_event, safe_text, timed
 from memovo_ai.embeddings.base import EmbeddingProvider
 from memovo_ai.schemas.errors import ErrorCode
 from memovo_ai.schemas.process import (
@@ -43,6 +46,8 @@ from memovo_ai.schemas.process import (
 from memovo_ai.understanding.content import compose_canonical_content
 
 __all__ = ["MemoryProcessorService"]
+
+_logger = logging.getLogger(__name__)
 
 
 def _embeddable_source(source: LinkSource | None) -> list[str]:
@@ -88,16 +93,34 @@ class MemoryProcessorService:
             source=_embeddable_source(request.source),
         )
 
-        chunks = self._chunk(content)
+        with timed() as chunking_elapsed:
+            chunks = self._chunk(content)
+
         if not chunks:
             # Every field was empty, so there is nothing to index. The
             # contract permits an empty chunk set, and rejecting the request
             # would invent a validation rule no source document states.
+            self._log_processed(
+                request.memory_id,
+                content_chars=len(content),
+                chunk_count=0,
+                chunking_ms=chunking_elapsed.ms,
+                embedding_ms=0.0,
+            )
             return ProcessMemoryResponse(content=content, chunks=[])
 
         # One batched call: the provider decides how to split it into forward
         # passes (doc 02, section 7).
-        embeddings = await self._embeddings.embed_documents([chunk.content for chunk in chunks])
+        with timed() as embedding_elapsed:
+            embeddings = await self._embeddings.embed_documents([chunk.content for chunk in chunks])
+
+        self._log_processed(
+            request.memory_id,
+            content_chars=len(content),
+            chunk_count=len(chunks),
+            chunking_ms=chunking_elapsed.ms,
+            embedding_ms=embedding_elapsed.ms,
+        )
 
         if len(embeddings) != len(chunks):
             message = f"expected {len(chunks)} embeddings, got {len(embeddings)}"
@@ -121,6 +144,36 @@ class MemoryProcessorService:
                 )
                 for chunk, embedding in zip(chunks, embeddings, strict=True)
             ],
+        )
+
+    def _log_processed(
+        self,
+        memory_id: str,
+        *,
+        content_chars: int,
+        chunk_count: int,
+        chunking_ms: float,
+        embedding_ms: float,
+    ) -> None:
+        """Record the shape and cost of one ingestion.
+
+        Sizes and durations only. The canonical content and the chunk text
+        are precisely what doc 06 section 5 forbids logging; their character
+        count is what explains a slow request without revealing it.
+
+        ``memoryId`` is an opaque Backend identifier rather than user
+        content, so it is logged as-is -- but truncated, because the contract
+        sets no length limit on it and an over-long value must not be able to
+        turn a successful ingestion into a logging failure.
+        """
+        log_event(
+            _logger,
+            "memory.processed",
+            memory_id=safe_text(memory_id),
+            content_chars=content_chars,
+            chunk_count=chunk_count,
+            chunking_ms=chunking_ms,
+            embedding_ms=embedding_ms,
         )
 
     def _chunk(self, content: str) -> list[Chunk]:
