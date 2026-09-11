@@ -1,0 +1,58 @@
+# Local development topology (doc 06, section 7).
+#
+#   Internet -> Backend -> MongoDB / Vector DB (writes)
+#                       -> AI Service -> Qwen3
+#                                     -> Vector DB (reads only)
+#
+# The AI Service is private. The port below binds to 127.0.0.1 explicitly:
+# the short form `8000:8000` would publish on every interface, which on a
+# developer machine means the local network and, behind some routers, more
+# than that. In a real deployment this service gets no public route at all --
+# the Backend reaches it over an internal network.
+
+services:
+  ai:
+    build:
+      context: .
+      # Set to false for a fast image that downloads weights on first start.
+      args:
+        BAKE_MODEL: "true"
+    image: memovo-ai:local
+    ports:
+      - target: 8000
+        published: "8000"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    environment:
+      MEMOVO_ENV: development
+      MEMOVO_LOG_LEVEL: INFO
+      MEMOVO_LOG_FORMAT: json
+      # `fake` keeps local work self-contained. Point at `atlas` and supply
+      # MEMOVO_ATLAS_URI through the secret store to read a real index.
+      MEMOVO_VECTOR_PROVIDER: fake
+    env_file:
+      # Optional: real credentials, never committed. Create it from
+      # .env.example. The image itself contains no .env (see .dockerignore).
+      - path: .env
+        required: false
+    read_only: true
+    tmpfs:
+      # The root filesystem is read-only, so give the process the scratch
+      # space a tokenizer and a temp file need. Model weights are already
+      # baked into the image and are only read.
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()
+      interval: 30s
+      timeout: 3s
+      # Generous: a cold model load on CPU is slow, and a container killed
+      # mid-load never finishes one.
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped

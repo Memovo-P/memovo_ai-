@@ -1,0 +1,131 @@
+# The quality gate from CLAUDE.md, run on every push and pull request.
+#
+# Deliberately installed **without** the optional extras. Doc 03 Phase 06 is
+# explicit that CI must not download model weights, and the suite is written
+# to behave identically with or without them: unit tests inject a fake
+# encoder, the Atlas tests substitute a stub collection, and both integration
+# suites skip unless their opt-in variable is set. A job that pulled torch
+# would be slower, flakier, and would prove less.
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pin the settings the suite asserts against, so a runner's environment
+  # cannot change what the tests mean.
+  MEMOVO_LOG_FORMAT: json
+  MEMOVO_LOG_LEVEL: INFO
+
+jobs:
+  gate:
+    name: test, lint, type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Sync dependencies
+        # --frozen: fail if uv.lock disagrees with pyproject.toml rather than
+        # silently resolving something the lockfile never pinned.
+        run: uv sync --frozen
+
+      - name: pytest
+        run: uv run pytest
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy src
+
+  hermetic:
+    name: gate with optional extras installed
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Sync dependencies with extras
+        run: uv sync --frozen --extra embeddings --extra atlas
+
+      - name: pytest
+        # The behaviour that must not differ. Installing the extras changed
+        # results twice before -- once a suite that ran for ten minutes and
+        # loaded real weights, once a mypy failure on an overloaded signature
+        # -- and both were invisible to the light job above.
+        run: uv run pytest
+
+      - name: mypy
+        run: uv run mypy src
+
+  image:
+    name: build the container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Weights are not baked here: CI proves the image builds and boots,
+          # not that a 1.2 GB download works. The release build sets
+          # BAKE_MODEL=true.
+          build-args: BAKE_MODEL=false
+          load: true
+          tags: memovo-ai:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot and probe
+        # Proves the image actually serves: the process starts, liveness
+        # answers, and readiness reports unavailable because no model is
+        # present in a thin image. A container that builds but cannot boot
+        # is the classic thing a build-only job misses.
+        run: |
+          docker run -d --name memovo-ci -p 8000:8000 \
+            -e MEMOVO_VECTOR_PROVIDER=fake memovo-ai:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then break; fi
+            sleep 2
+          done
+          echo
+          curl -fsS http://127.0.0.1:8000/health | grep -q '"status":"alive"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ready)" = "503"
+          docker logs memovo-ci
+          docker rm -f memovo-ci

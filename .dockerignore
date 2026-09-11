@@ -1,0 +1,31 @@
+# Keep the build context small and, above all, free of secrets.
+#
+# `.env` is the important line here: it is the one file in the repository
+# that is expected to hold a real Atlas connection string, and a build
+# context is copied into the daemon whether or not a COPY references it.
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.github
+
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+tests
+eval
+scripts
+docs
+*.md
+!README.md
+
+Dockerfile
+.dockerignore
+docker-compose.yml

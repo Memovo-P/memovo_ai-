@@ -34,6 +34,9 @@ dev = [
     "mypy>=1.13.0",
     # Required by starlette's TestClient, which drives the route tests.
     "httpx2>=0.28.0",
+    # Reads docker-compose.yml and the CI workflow in the Phase 23 tests.
+    # Declared rather than relied on transitively.
+    "pyyaml>=6.0",
 ]
 
 [build-system]

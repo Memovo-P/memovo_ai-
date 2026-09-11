@@ -91,6 +91,21 @@ Two operational probes sit outside the contract: `GET /health` (liveness --
 is the process alive) and `GET /ready` (readiness -- should it receive
 traffic). Never point a liveness probe at `/ready`.
 
+## Docker
+
+```bash
+# Production image: Qwen3 weights baked in, so startup is offline.
+docker build -t memovo-ai:0.1.0 .
+
+# Fast local image: no weights, downloaded on first start.
+docker build --build-arg BAKE_MODEL=false -t memovo-ai:thin .
+
+docker compose up --build
+```
+
+Deployment topology, probe wiring, scaling and the production environment
+variables are in [docs/deployment.md](docs/deployment.md).
+
 ## Retrieval evaluation
 
 `eval/` holds the quality dataset and the threshold sweep. See
@@ -124,6 +139,12 @@ written, rather than all at once as empty scaffolding.
 | 15 - Error contract | Complete |
 | 16 - Reprocessing contract tests | Complete |
 | 17 - Link support (`about`, `source`) | Complete |
-| 18, 19 | Not started |
+| 18 - Privacy and observability | Complete |
+| 19 - Trusted boundary, health and readiness | Complete |
 | 20 - Retrieval evaluation | Complete |
-| 21+ | Not started |
+| 21 - Full test matrix | Not started |
+| 22 - Performance testing | Not started |
+| 23 - Containerization and deployment | Complete |
+| 24 - Backend integration testing | Blocked on a live Atlas cluster |
+| 25 - Sprint 1 acceptance | Not started |
+| Production vector adapter (MongoDB Atlas) | Complete, never run against a live cluster |
