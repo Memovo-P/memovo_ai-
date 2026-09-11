@@ -19,6 +19,12 @@ dependencies = [
 embeddings = [
     "sentence-transformers>=3.0.0",
 ]
+# The MongoDB driver. Optional for the same reason: unit tests substitute a
+# stub collection, so CI needs neither the driver nor a cluster.
+#     uv sync --extra atlas
+atlas = [
+    "pymongo>=4.9",
+]
 
 [dependency-groups]
 dev = [
@@ -118,8 +124,8 @@ show_error_codes = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-# Optional extra; absent from the default dev install.
-module = ["sentence_transformers.*"]
+# Optional extras; absent from the default dev install.
+module = ["sentence_transformers.*", "pymongo.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

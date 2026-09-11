@@ -6,12 +6,14 @@ technology is confirmed; until then the in-memory fake serves development and
 tests.
 """
 
+from memovo_ai.providers.vector_search.atlas import MongoAtlasVectorSearchProvider
 from memovo_ai.providers.vector_search.base import (
     VECTOR_WRITE_OPERATIONS,
     InvalidUserScopeError,
     UserIsolationError,
     UserScopedVectorSearchProvider,
     VectorSearchProvider,
+    VectorSearchUnavailableError,
     validate_user_scope,
 )
 from memovo_ai.providers.vector_search.fake import (
@@ -24,10 +26,12 @@ __all__ = [
     "VECTOR_WRITE_OPERATIONS",
     "FakeVectorSearchProvider",
     "InvalidUserScopeError",
+    "MongoAtlasVectorSearchProvider",
     "SearchCall",
     "UserIsolationError",
     "UserScopedVectorSearchProvider",
     "VectorRecord",
     "VectorSearchProvider",
+    "VectorSearchUnavailableError",
     "validate_user_scope",
 ]

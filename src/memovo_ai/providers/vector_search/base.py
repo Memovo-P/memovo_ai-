@@ -28,6 +28,7 @@ __all__ = [
     "UserIsolationError",
     "UserScopedVectorSearchProvider",
     "VectorSearchProvider",
+    "VectorSearchUnavailableError",
     "validate_user_scope",
 ]
 
@@ -55,6 +56,19 @@ class VectorSearchProvider(Protocol):
         would make the threshold untestable.
         """
         ...
+
+
+class VectorSearchUnavailableError(Exception):
+    """The vector engine could not answer.
+
+    Covers connection failures, driver errors and malformed index documents.
+    Phase 15 maps it to ``VECTOR_SEARCH_FAILED`` (503, retryable): the query
+    itself was fine, so repeating it may well succeed.
+
+    Messages are generic by construction. A driver exception can carry the
+    connection string, and that must never reach a response or a log line
+    (doc 06, section 6); the original is chained instead.
+    """
 
 
 class UserIsolationError(Exception):

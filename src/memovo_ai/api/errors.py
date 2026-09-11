@@ -28,7 +28,11 @@ from memovo_ai.embeddings.models import (
     InvalidEmbeddingError,
     ModelUnavailableError,
 )
-from memovo_ai.providers.vector_search.base import InvalidUserScopeError, UserIsolationError
+from memovo_ai.providers.vector_search.base import (
+    InvalidUserScopeError,
+    UserIsolationError,
+    VectorSearchUnavailableError,
+)
 from memovo_ai.schemas.errors import ErrorCode, ErrorDetail, ErrorResponse
 
 __all__ = ["classify", "error_response", "register_exception_handlers"]
@@ -54,6 +58,8 @@ def classify(exception: BaseException) -> ErrorCode:
             return ErrorCode.MODEL_UNAVAILABLE
         case InvalidEmbeddingError() | EmbeddingInferenceError() | EmbeddingError():
             return ErrorCode.EMBEDDING_FAILED
+        case VectorSearchUnavailableError():
+            return ErrorCode.VECTOR_SEARCH_FAILED
         case UserIsolationError():
             # A broken user pre-filter is a service defect, not a bad request,
             # and must never be presented as retryable.

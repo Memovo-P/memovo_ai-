@@ -16,7 +16,11 @@ from memovo_ai.core.errors import ERROR_HTTP_STATUS, ERROR_MESSAGE, AiServiceErr
 from memovo_ai.embeddings import EMBEDDING_DIMENSION, Embedding
 from memovo_ai.embeddings.models import EmbeddingInferenceError, ModelUnavailableError
 from memovo_ai.main import create_app
-from memovo_ai.providers.vector_search import FakeVectorSearchProvider, VectorRecord
+from memovo_ai.providers.vector_search import (
+    FakeVectorSearchProvider,
+    VectorRecord,
+    VectorSearchUnavailableError,
+)
 from memovo_ai.retrieval import VectorSearchHit
 from memovo_ai.schemas import ErrorCode, ErrorResponse
 from memovo_ai.services import MemorySearchService
@@ -315,3 +319,62 @@ def test_a_no_match_is_not_turned_into_an_error() -> None:
 
         assert response.status_code == 200
         assert response.json()["found"] is False
+
+
+# --------------------------------------------------------------------------
+# The vector-search codes, reachable now that a real adapter exists
+# --------------------------------------------------------------------------
+class UnavailableVectorSearch:
+    """What the Atlas adapter raises when the engine cannot answer."""
+
+    async def search(
+        self, *, user_id: str, query_embedding: Sequence[float], top_k: int
+    ) -> list[VectorSearchHit]:
+        message = "vector search failed"
+        raise VectorSearchUnavailableError(message)
+
+
+class TimingOutVectorSearch:
+    async def search(
+        self, *, user_id: str, query_embedding: Sequence[float], top_k: int
+    ) -> list[VectorSearchHit]:
+        message = "vector search timed out"
+        raise TimeoutError(message)
+
+
+def test_a_vector_engine_failure_reports_vector_search_failed() -> None:
+    """Retryable, so the Backend will try again rather than giving up."""
+    app = app_with(vector_search=UnavailableVectorSearch())
+
+    for http in client_of(app):
+        response = http.post(ENDPOINT, json=VALID_BODY)
+
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "VECTOR_SEARCH_FAILED"
+        assert response.json()["error"]["retryable"] is True
+
+
+def test_a_vector_search_timeout_reports_timeout() -> None:
+    app = app_with(vector_search=TimingOutVectorSearch())
+
+    for http in client_of(app):
+        response = http.post(ENDPOINT, json=VALID_BODY)
+
+        assert response.status_code == 504
+        assert response.json()["error"]["code"] == "TIMEOUT"
+        assert response.json()["error"]["retryable"] is True
+
+
+def test_a_vector_failure_leaks_no_connection_string() -> None:
+    class LeakyVectorSearch:
+        async def search(
+            self, *, user_id: str, query_embedding: Sequence[float], top_k: int
+        ) -> list[VectorSearchHit]:
+            raise VectorSearchUnavailableError("vector search failed")
+
+    for http in client_of(app_with(vector_search=LeakyVectorSearch())):
+        body = http.post(ENDPOINT, json=VALID_BODY).text
+
+        assert "mongodb" not in body.lower()
+        for marker in LEAK_MARKERS:
+            assert marker not in body

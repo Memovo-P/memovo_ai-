@@ -267,6 +267,31 @@ def test_startup_survives_a_missing_model_runtime() -> None:
         assert http.get("/openapi.json").status_code == 200
 
 
+def test_startup_survives_a_misconfigured_vector_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unset Atlas URI is a configuration problem, not a reason to crash.
+
+    A crash loop tells an operator less than a service that starts and
+    reports itself unavailable (doc 06, section 9).
+    """
+    from memovo_ai import main
+    from memovo_ai.providers.vector_search import VectorSearchUnavailableError
+
+    def explode() -> None:
+        message = "Atlas connection string is not configured"
+        raise VectorSearchUnavailableError(message)
+
+    monkeypatch.setattr(main, "build_services", explode)
+
+    with TestClient(main.create_app(), raise_server_exceptions=False) as http:
+        assert http.get("/openapi.json").status_code == 200
+
+        response = http.post(ENDPOINT, json={"query": "q", "userId": USER})
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "MODEL_UNAVAILABLE"
+
+
 def test_an_unavailable_model_does_not_answer_queries() -> None:
     """Without the extra installed the service cannot be built, and the
     request must fail rather than silently report no memories."""

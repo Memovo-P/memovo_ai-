@@ -19,6 +19,7 @@ from memovo_ai.api.dependencies import Services, build_services
 from memovo_ai.api.errors import register_exception_handlers
 from memovo_ai.api.router import api_router
 from memovo_ai.embeddings.models import EmbeddingError
+from memovo_ai.providers.vector_search.base import VectorSearchUnavailableError
 
 __all__ = ["app", "create_app"]
 
@@ -43,17 +44,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     services: Services | None
     try:
         services = None if skip else build_services()
-    except (EmbeddingError, ValueError):
+    except (EmbeddingError, VectorSearchUnavailableError, ValueError):
         # Startup continues in an unavailable state. The dependencies raise
         # ModelUnavailableError per request, which Phase 15 maps to a
         # standardized 503 rather than an opaque crash loop.
+        #
+        # VectorSearchUnavailableError belongs here too: an unset or wrong
+        # Atlas connection string is a configuration problem, and a crash
+        # loop tells an operator far less than a service that starts and
+        # reports itself unavailable (doc 06, section 9).
         services = None
 
     app.state.memory_search_service = services.memory_search if services else None
     app.state.memory_processor_service = services.memory_processor if services else None
+
     yield
+
     app.state.memory_search_service = None
     app.state.memory_processor_service = None
+    if services is not None:
+        await services.aclose()
 
 
 def create_app(*, load_services: bool = True) -> FastAPI:

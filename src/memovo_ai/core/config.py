@@ -5,15 +5,17 @@ Settings are read from the environment (and a local ``.env``) with the
 so far; later phases add their own sections rather than one growing object.
 """
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = [
+    "ATLAS_VECTOR_PROVIDER",
     "DEFAULT_EMBEDDING_DIMENSION",
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_SEARCH_SIMILARITY_THRESHOLD",
     "DEFAULT_SEARCH_TOP_K",
     "FAKE_VECTOR_PROVIDER",
+    "AtlasSettings",
     "EmbeddingSettings",
     "ProviderSettings",
     "SearchSettings",
@@ -115,9 +117,10 @@ class SearchSettings(BaseSettings):
     )
 
 
-#: Only the in-memory fake exists. The production vector database has not been
-#: selected (doc 01, section 8), so no adapter is registered for it yet.
+#: In-memory adapter for development and tests.
 FAKE_VECTOR_PROVIDER = "fake"
+#: MongoDB Atlas Vector Search.
+ATLAS_VECTOR_PROVIDER = "atlas"
 
 
 class ProviderSettings(BaseSettings):
@@ -137,3 +140,55 @@ class ProviderSettings(BaseSettings):
 
     #: Read-only vector search adapter. ``fake`` is the development default.
     vector_provider: str = FAKE_VECTOR_PROVIDER
+
+
+class AtlasSettings(BaseSettings):
+    """MongoDB Atlas Vector Search connection and index configuration.
+
+    Environment variables use the ``MEMOVO_ATLAS_`` prefix. The connection
+    string carries credentials, so it is a :class:`~pydantic.SecretStr`: it
+    never appears in a repr, a log line or a traceback. Nothing here has a
+    credential-bearing default -- an unset ``uri`` fails loudly at startup
+    rather than silently connecting somewhere unintended.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_ATLAS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    #: Full connection string, e.g. ``mongodb+srv://user:pass@cluster/``.
+    uri: SecretStr = SecretStr("")
+
+    database: str = "memovo"
+
+    #: Collection the Backend writes chunk documents into.
+    collection: str = "memory_chunks"
+
+    #: Name of the Atlas Vector Search index on that collection.
+    index: str = "memory_chunks_vector_index"
+
+    #: Document field holding the 1024-dimension vector.
+    path: str = "embedding"
+
+    #: Atlas explores ``numCandidates`` nodes before returning ``limit``
+    #: results. Too low costs recall; too high costs latency. Atlas requires
+    #: it to be at least the limit, and recommends a healthy multiple.
+    num_candidates_multiplier: int = Field(default=10, ge=1)
+
+    #: Floor on numCandidates, so a Top-K of 5 still explores enough of the
+    #: graph to find good neighbours.
+    min_num_candidates: int = Field(default=100, ge=1)
+
+    #: Applied to server selection, connection and the query itself.
+    timeout_ms: int = Field(default=5_000, ge=1)
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.uri.get_secret_value().strip())
+
+    def num_candidates(self, top_k: int) -> int:
+        return max(top_k * self.num_candidates_multiplier, self.min_num_candidates)

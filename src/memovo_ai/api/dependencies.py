@@ -19,7 +19,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from memovo_ai.core.config import (
+    ATLAS_VECTOR_PROVIDER,
     FAKE_VECTOR_PROVIDER,
+    AtlasSettings,
     EmbeddingSettings,
     ProviderSettings,
     SearchSettings,
@@ -31,6 +33,7 @@ from memovo_ai.embeddings.base import (
 )
 from memovo_ai.embeddings.models import ModelUnavailableError
 from memovo_ai.embeddings.qwen3 import Qwen3EmbeddingProvider
+from memovo_ai.providers.vector_search.atlas import MongoAtlasVectorSearchProvider
 from memovo_ai.providers.vector_search.base import VectorSearchProvider
 from memovo_ai.providers.vector_search.fake import FakeVectorSearchProvider
 from memovo_ai.services.memory_processor import MemoryProcessorService
@@ -50,10 +53,27 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class Services:
-    """The application services, sharing one loaded embedding model."""
+    """The application services, sharing one loaded embedding model.
+
+    ``vector_search`` is kept here purely so startup can hand it back at
+    shutdown. An adapter that holds a database client needs closing, and the
+    search service deliberately does not expose the provider it wraps.
+    """
 
     memory_search: MemorySearchService
     memory_processor: MemoryProcessorService
+    vector_search: VectorSearchProvider
+
+    async def aclose(self) -> None:
+        """Release anything the providers hold open.
+
+        Only the vector adapter owns a connection. ``aclose`` is optional on
+        the protocol -- the in-memory fake has nothing to release -- so it is
+        called only when present.
+        """
+        close = getattr(self.vector_search, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def build_embedding_provider(settings: EmbeddingSettings | None = None) -> EmbeddingProvider:
@@ -85,21 +105,19 @@ def build_vector_search_provider(
 ) -> VectorSearchProvider:
     """Select the read-only vector search adapter.
 
-    Only the in-memory fake is registered. The production database has not
-    been chosen (doc 01, section 8), so an unknown name fails loudly rather
-    than silently falling back to an empty index and reporting "no memories"
-    for every query.
+    An unknown name fails loudly rather than silently falling back to an
+    empty index and reporting "no memories" for every query.
     """
     resolved = settings if settings is not None else ProviderSettings()
 
     if resolved.vector_provider == FAKE_VECTOR_PROVIDER:
         return FakeVectorSearchProvider()
 
-    message = (
-        f"unknown vector provider {resolved.vector_provider!r}; "
-        f"only {FAKE_VECTOR_PROVIDER!r} is available until the production "
-        "vector database is selected"
-    )
+    if resolved.vector_provider == ATLAS_VECTOR_PROVIDER:
+        return MongoAtlasVectorSearchProvider.connect(AtlasSettings())
+
+    known = f"{FAKE_VECTOR_PROVIDER!r}, {ATLAS_VECTOR_PROVIDER!r}"
+    message = f"unknown vector provider {resolved.vector_provider!r}; known providers are {known}"
     raise ValueError(message)
 
 
@@ -115,14 +133,16 @@ def build_services(
     single time no matter how many services use it (doc 02, section 7).
     """
     embeddings = build_embedding_provider(embedding_settings)
+    vector_search = build_vector_search_provider(provider_settings)
 
     return Services(
         memory_search=MemorySearchService(
             embedding_provider=embeddings,
-            vector_search=build_vector_search_provider(provider_settings),
+            vector_search=vector_search,
             settings=search_settings if search_settings is not None else SearchSettings(),
         ),
         memory_processor=MemoryProcessorService(embedding_provider=embeddings),
+        vector_search=vector_search,
     )
 
 
