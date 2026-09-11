@@ -36,6 +36,19 @@ _logger = logging.getLogger(__name__)
 
 _SERVER_ERROR_STATUS = 500
 
+#: Probe routes, logged at DEBUG while they succeed. An orchestrator calls
+#: these every few seconds; at INFO they would bury the request records that
+#: actually matter. A failing probe is still logged at WARNING, because that
+#: one is worth seeing.
+_QUIET_ROUTES = frozenset({"/health", "/ready"})
+
+
+def _level_for(route: str, status_code: int) -> int:
+    if status_code >= _SERVER_ERROR_STATUS:
+        return logging.WARNING
+
+    return logging.DEBUG if route in _QUIET_ROUTES else logging.INFO
+
 
 def _route_of(request: Request) -> str:
     """The matched route template, or a sanitized path.
@@ -83,16 +96,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 )
                 raise
 
+            route = _route_of(request)
             log_event(
                 _logger,
                 "http.request",
-                level=(
-                    logging.WARNING
-                    if response.status_code >= _SERVER_ERROR_STATUS
-                    else logging.INFO
-                ),
+                level=_level_for(route, response.status_code),
                 method=request.method,
-                route=_route_of(request),
+                route=route,
                 status=response.status_code,
                 duration_ms=elapsed.ms,
             )

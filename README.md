@@ -87,6 +87,10 @@ with `MODEL_UNAVAILABLE` rather than silently reporting no memories.
 This service is internal and must not be exposed publicly; the Backend is the
 only caller.
 
+Two operational probes sit outside the contract: `GET /health` (liveness --
+is the process alive) and `GET /ready` (readiness -- should it receive
+traffic). Never point a liveness probe at `/ready`.
+
 ## Retrieval evaluation
 
 `eval/` holds the quality dataset and the threshold sweep. See

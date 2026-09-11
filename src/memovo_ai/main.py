@@ -21,6 +21,7 @@ from memovo_ai.api.errors import register_exception_handlers
 from memovo_ai.api.middleware import RequestContextMiddleware
 from memovo_ai.api.router import api_router
 from memovo_ai.core.logging import configure_logging, log_event
+from memovo_ai.core.readiness import ReadinessState, set_readiness
 from memovo_ai.embeddings.models import EmbeddingError
 from memovo_ai.providers.vector_search.base import VectorSearchUnavailableError
 
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     is actually requested.
     """
     skip = getattr(app.state, _SKIP_STARTUP_SERVICES, False)
+    set_readiness(app.state, ReadinessState.LOADING)
 
     services: Services | None
     try:
@@ -74,10 +76,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.memory_search_service = services.memory_search if services else None
     app.state.memory_processor_service = services.memory_processor if services else None
 
+    # Readiness follows the services, not the process. Without usable
+    # services the process stays alive and answers probes, but must be kept
+    # out of the load balancer (doc 06, section 9).
+    set_readiness(
+        app.state,
+        ReadinessState.READY if services is not None else ReadinessState.UNAVAILABLE,
+    )
+
     log_event(_logger, "service.started", services_available=services is not None)
 
     yield
 
+    # Unready before teardown, so an instance draining connections stops
+    # attracting new traffic.
+    set_readiness(app.state, ReadinessState.UNAVAILABLE)
     app.state.memory_search_service = None
     app.state.memory_processor_service = None
     if services is not None:
@@ -105,6 +118,7 @@ def create_app(*, load_services: bool = True) -> FastAPI:
         lifespan=lifespan,
     )
     setattr(application.state, _SKIP_STARTUP_SERVICES, not load_services)
+    set_readiness(application.state, ReadinessState.STARTING)
     application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)
     application.include_router(api_router)
