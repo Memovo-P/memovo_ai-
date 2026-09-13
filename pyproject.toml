@@ -9,6 +9,9 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
+    # Outbound HTTP for the OpenRouter generation adapter (the only network
+    # client in the service; processing and search never use it).
+    "httpx2>=0.28.0",
 ]
 
 [project.optional-dependencies]
@@ -32,8 +35,6 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
-    # Required by starlette's TestClient, which drives the route tests.
-    "httpx2>=0.28.0",
     # Reads docker-compose.yml and the CI workflow in the Phase 23 tests.
     # Declared rather than relied on transitively.
     "pyyaml>=6.0",
@@ -107,6 +108,9 @@ select = [
 # terminators). RUF001/RUF003 flag exactly the characters the module is for,
 # and its suggested ASCII replacements are wrong here.
 "src/memovo_ai/chunking/hybrid_chunker.py" = ["RUF001", "RUF003"]
+# Prompt text is kept as readable paragraphs; wrapping it at 100 columns
+# would only obscure what the model is told.
+"src/memovo_ai/generation/prompts.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["memovo_ai"]

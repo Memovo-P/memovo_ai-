@@ -16,6 +16,9 @@ SUPPORTED_CODES = [
     "MODEL_UNAVAILABLE",
     "TIMEOUT",
     "INTERNAL_ERROR",
+    "GENERATION_UNAVAILABLE",
+    "RATE_LIMITED",
+    "AI_INVALID_RESPONSE",
 ]
 
 VALID_DETAIL = {
@@ -43,7 +46,7 @@ def test_every_supported_code_is_accepted(code: str) -> None:
         "invalid_input",
         "InvalidInput",
         "",
-        "RATE_LIMITED",
+        "GENERATION_FAILED",
         "NOT_FOUND",
         1,
         None,

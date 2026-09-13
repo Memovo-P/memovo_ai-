@@ -4,20 +4,31 @@ These models define the externally observable JSON shapes for
 ``POST /ai/memories/process`` and ``POST /ai/memories/search``, plus the
 standardized error envelope. They are the contract boundary: field names,
 required fields and literal values here are locked by the integration
-contract and must not drift.
+contract (``docs/AI_CONTRACT_FINAL.md``) and must not drift.
 """
 
-from memovo_ai.schemas.common import BaseChunk, MemovoBaseModel
+from memovo_ai.schemas.chat import (
+    ChatMemoriesRequest,
+    ChatMemoriesResponse,
+    ChatSource,
+    ChatSourceChunk,
+    HistoryMessage,
+)
+from memovo_ai.schemas.common import MemovoBaseModel
 from memovo_ai.schemas.errors import ErrorCode, ErrorDetail, ErrorResponse
+from memovo_ai.schemas.prepare_note import PrepareNoteRequest, PrepareNoteResponse
 from memovo_ai.schemas.process import (
-    PROCESS_INTENT,
+    MEMORY_TYPE_LINK,
+    MEMORY_TYPE_NOTE,
+    LinkProcessRequest,
     LinkSource,
+    NoteProcessRequest,
     ProcessedChunk,
     ProcessMemoryRequest,
+    ProcessMemoryRequestAdapter,
     ProcessMemoryResponse,
 )
 from memovo_ai.schemas.search import (
-    NO_MATCH_MESSAGE,
     SearchMemoryNoMatchResponse,
     SearchMemoryRequest,
     SearchMemoryResponse,
@@ -28,15 +39,24 @@ from memovo_ai.schemas.search import (
 )
 
 __all__ = [
-    "NO_MATCH_MESSAGE",
-    "PROCESS_INTENT",
-    "BaseChunk",
+    "MEMORY_TYPE_LINK",
+    "MEMORY_TYPE_NOTE",
+    "ChatMemoriesRequest",
+    "ChatMemoriesResponse",
+    "ChatSource",
+    "ChatSourceChunk",
     "ErrorCode",
     "ErrorDetail",
     "ErrorResponse",
+    "HistoryMessage",
+    "LinkProcessRequest",
     "LinkSource",
     "MemovoBaseModel",
+    "NoteProcessRequest",
+    "PrepareNoteRequest",
+    "PrepareNoteResponse",
     "ProcessMemoryRequest",
+    "ProcessMemoryRequestAdapter",
     "ProcessMemoryResponse",
     "ProcessedChunk",
     "SearchMemoryNoMatchResponse",

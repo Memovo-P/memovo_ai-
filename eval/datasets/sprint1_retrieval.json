@@ -1,291 +1,852 @@
 {
   "name": "sprint1_retrieval",
-  "description": "Sprint 1 retrieval quality dataset. Memories use the /ai/memories/process request shape so they feed the real pipeline unchanged. Queries carry the memory ids a correct system should return; an empty list means the correct answer is no match.",
+  "description": "Sprint 1 retrieval quality dataset. Memories use the contract v1.9 /ai/memories/process Note request shape so they feed the real pipeline unchanged. Queries carry the memory ids a correct system should return; an empty list means the correct answer is no match.",
   "memories": [
     {
+      "type": "note",
       "memoryId": "mem_atlas_vector",
       "title": "MongoDB Atlas Vector Search",
-      "description": "Atlas Vector Search stores embeddings in a vector index and retrieves documents by semantic similarity rather than keyword matching. The index definition needs numDimensions and a similarity metric such as cosine. Filters can be applied before the nearest-neighbour scan.",
-      "whySaved": "Reference for the memory retrieval layer",
-      "tags": ["mongodb", "vector-search", "ai"]
+      "content": "Atlas Vector Search stores embeddings in a vector index and retrieves documents by semantic similarity rather than keyword matching. The index definition needs numDimensions and a similarity metric such as cosine. Filters can be applied before the nearest-neighbour scan.",
+      "tags": [
+        "mongodb",
+        "vector-search",
+        "ai"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_pgvector",
       "title": "pgvector extension for Postgres",
-      "description": "pgvector adds a vector column type to Postgres with ivfflat and hnsw index types. Cosine distance uses the vector_cosine_ops operator class. Good when you already run Postgres and do not want another datastore.",
-      "whySaved": "Alternative to a dedicated vector database",
-      "tags": ["postgres", "pgvector", "vector-search"]
+      "content": "pgvector adds a vector column type to Postgres with ivfflat and hnsw index types. Cosine distance uses the vector_cosine_ops operator class. Good when you already run Postgres and do not want another datastore.",
+      "tags": [
+        "postgres",
+        "pgvector",
+        "vector-search"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_embedding_models",
       "title": "Choosing an embedding model",
-      "description": "Smaller embedding models are cheaper and faster but lose nuance on long documents. Multilingual models matter when users write in more than one language. Always check the output dimension against what your index expects.",
-      "whySaved": "Was comparing options for the AI service",
-      "tags": ["embeddings", "ai", "models"]
+      "content": "Smaller embedding models are cheaper and faster but lose nuance on long documents. Multilingual models matter when users write in more than one language. Always check the output dimension against what your index expects.",
+      "tags": [
+        "embeddings",
+        "ai",
+        "models"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_chunking",
       "title": "Chunking strategies for RAG",
-      "description": "Fixed-size chunks are simple but cut sentences in half. Splitting on headings and paragraphs keeps meaning intact. A small overlap between chunks stops an answer being lost at a boundary.",
-      "whySaved": "Designing the ingestion pipeline",
-      "tags": ["rag", "chunking", "ai"]
+      "content": "Fixed-size chunks are simple but cut sentences in half. Splitting on headings and paragraphs keeps meaning intact. A small overlap between chunks stops an answer being lost at a boundary.",
+      "tags": [
+        "rag",
+        "chunking",
+        "ai"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_python_async",
       "title": "Python asyncio notes",
-      "description": "Use asyncio.to_thread to move blocking CPU work off the event loop. asyncio.gather runs coroutines concurrently. Never call a synchronous database driver directly inside an async request handler.",
-      "whySaved": "Keep the API responsive under load",
-      "tags": ["python", "asyncio", "concurrency"]
+      "content": "Use asyncio.to_thread to move blocking CPU work off the event loop. asyncio.gather runs coroutines concurrently. Never call a synchronous database driver directly inside an async request handler.",
+      "tags": [
+        "python",
+        "asyncio",
+        "concurrency"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_python_typing",
       "title": "Modern Python typing",
-      "description": "Use the built-in generics like list[str] instead of typing.List. Protocol classes give structural typing without inheritance. Run mypy in strict mode to catch missing annotations early.",
-      "whySaved": "Team style guide",
-      "tags": ["python", "typing", "mypy"]
+      "content": "Use the built-in generics like list[str] instead of typing.List. Protocol classes give structural typing without inheritance. Run mypy in strict mode to catch missing annotations early.",
+      "tags": [
+        "python",
+        "typing",
+        "mypy"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_docker_layers",
       "title": "Docker layer caching",
-      "description": "Copy the dependency manifest and install packages before copying application source, so a code change does not invalidate the dependency layer. Multi-stage builds keep the runtime image small.",
-      "whySaved": "CI builds were far too slow",
-      "tags": ["docker", "ci", "devops"]
+      "content": "Copy the dependency manifest and install packages before copying application source, so a code change does not invalidate the dependency layer. Multi-stage builds keep the runtime image small.",
+      "tags": [
+        "docker",
+        "ci",
+        "devops"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_postgres_index",
       "title": "When Postgres ignores your index",
-      "description": "The planner skips an index when it estimates most rows will match anyway. Check with EXPLAIN ANALYZE. Stale statistics after a bulk load are a common cause; run ANALYZE afterwards.",
-      "whySaved": "Debugging a slow report query",
-      "tags": ["postgres", "performance", "sql"]
+      "content": "The planner skips an index when it estimates most rows will match anyway. Check with EXPLAIN ANALYZE. Stale statistics after a bulk load are a common cause; run ANALYZE afterwards.",
+      "tags": [
+        "postgres",
+        "performance",
+        "sql"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_git_rebase",
       "title": "Interactive rebase for tidy history",
-      "description": "Squash fixup commits before opening a pull request so reviewers see one coherent change per commit. Never rebase a branch other people have already pulled.",
-      "whySaved": "Code review feedback",
-      "tags": ["git", "workflow"]
+      "content": "Squash fixup commits before opening a pull request so reviewers see one coherent change per commit. Never rebase a branch other people have already pulled.",
+      "tags": [
+        "git",
+        "workflow"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_jwt_expiry",
       "title": "JWT expiry and refresh tokens",
-      "description": "Keep access tokens short lived and rotate refresh tokens on every use. Store refresh tokens server side so they can be revoked. A long-lived access token cannot be withdrawn once issued.",
-      "whySaved": "Auth design decision",
-      "tags": ["auth", "security", "jwt"]
+      "content": "Keep access tokens short lived and rotate refresh tokens on every use. Store refresh tokens server side so they can be revoked. A long-lived access token cannot be withdrawn once issued.",
+      "tags": [
+        "auth",
+        "security",
+        "jwt"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_sourdough",
       "title": "Sourdough starter routine",
-      "description": "Feed the starter with equal parts flour and water each morning and discard half before feeding. A healthy starter doubles within six hours and smells sweet rather than sharp.",
-      "whySaved": "So the bread actually rises",
-      "tags": ["baking", "sourdough", "bread"]
+      "content": "Feed the starter with equal parts flour and water each morning and discard half before feeding. A healthy starter doubles within six hours and smells sweet rather than sharp.",
+      "tags": [
+        "baking",
+        "sourdough",
+        "bread"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_pasta_dough",
       "title": "Fresh pasta dough ratio",
-      "description": "One hundred grams of flour per egg. Knead for ten minutes until smooth, then rest the dough wrapped for thirty minutes before rolling so the gluten relaxes.",
-      "whySaved": "Sunday cooking",
-      "tags": ["cooking", "pasta", "italian"]
+      "content": "One hundred grams of flour per egg. Knead for ten minutes until smooth, then rest the dough wrapped for thirty minutes before rolling so the gluten relaxes.",
+      "tags": [
+        "cooking",
+        "pasta",
+        "italian"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_coffee_ratio",
       "title": "Pour-over coffee ratio",
-      "description": "Sixty grams of coffee per litre of water. Bloom with twice the coffee weight for thirty seconds, then pour in slow circles. Grind finer if the brew tastes thin and sour.",
-      "whySaved": "Kept forgetting the numbers",
-      "tags": ["coffee", "brewing"]
+      "content": "Sixty grams of coffee per litre of water. Bloom with twice the coffee weight for thirty seconds, then pour in slow circles. Grind finer if the brew tastes thin and sour.",
+      "tags": [
+        "coffee",
+        "brewing"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_marathon_plan",
       "title": "Half marathon training plan",
-      "description": "Build weekly distance by no more than ten percent. One long slow run at the weekend, one interval session midweek, and at least two rest days. Taper for the final two weeks.",
-      "whySaved": "Race in the spring",
-      "tags": ["running", "fitness", "training"]
+      "content": "Build weekly distance by no more than ten percent. One long slow run at the weekend, one interval session midweek, and at least two rest days. Taper for the final two weeks.",
+      "tags": [
+        "running",
+        "fitness",
+        "training"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_sleep_hygiene",
       "title": "Sleep hygiene basics",
-      "description": "Keep a consistent wake time even at weekends. No caffeine after midday and no bright screens in the last hour. A cool dark room matters more than total hours in bed.",
-      "whySaved": "Trying to fix bad sleep",
-      "tags": ["health", "sleep"]
+      "content": "Keep a consistent wake time even at weekends. No caffeine after midday and no bright screens in the last hour. A cool dark room matters more than total hours in bed.",
+      "tags": [
+        "health",
+        "sleep"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_tax_deadlines",
       "title": "Quarterly tax filing deadlines",
-      "description": "Estimated payments fall due in April, June, September and January. Late payment attracts interest from the original due date, not from when you notice.",
-      "whySaved": "Avoid penalties",
-      "tags": ["tax", "finance", "deadlines"]
+      "content": "Estimated payments fall due in April, June, September and January. Late payment attracts interest from the original due date, not from when you notice.",
+      "tags": [
+        "tax",
+        "finance",
+        "deadlines"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_index_funds",
       "title": "Why low-cost index funds",
-      "description": "Fees compound against you exactly as returns compound for you. A broad market tracker with a low expense ratio beats most actively managed funds over twenty years.",
-      "whySaved": "Long-term savings plan",
-      "tags": ["investing", "finance"]
+      "content": "Fees compound against you exactly as returns compound for you. A broad market tracker with a low expense ratio beats most actively managed funds over twenty years.",
+      "tags": [
+        "investing",
+        "finance"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_lisbon_trip",
       "title": "Lisbon trip notes",
-      "description": "Stay in Alfama for the old town but expect steep hills. The tram queues are shortest before nine in the morning. Book the Belem pastry shop visit on a weekday.",
-      "whySaved": "Planning the autumn trip",
-      "tags": ["travel", "portugal", "lisbon"]
+      "content": "Stay in Alfama for the old town but expect steep hills. The tram queues are shortest before nine in the morning. Book the Belem pastry shop visit on a weekday.",
+      "tags": [
+        "travel",
+        "portugal",
+        "lisbon"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_guitar_barre",
       "title": "Learning barre chords",
-      "description": "Press with the bony edge of the index finger rather than the flat pad. Practise the F shape slowly and build strength before increasing tempo. Sore fingers pass after two weeks.",
-      "whySaved": "Practice plan",
-      "tags": ["guitar", "music", "practice"]
+      "content": "Press with the bony edge of the index finger rather than the flat pad. Practise the F shape slowly and build strength before increasing tempo. Sore fingers pass after two weeks.",
+      "tags": [
+        "guitar",
+        "music",
+        "practice"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_plant_watering",
       "title": "Watering houseplants properly",
-      "description": "Water deeply but less often, and let the top few centimetres dry out first. Yellow drooping leaves usually mean too much water rather than too little.",
-      "whySaved": "Kept killing the monstera",
-      "tags": ["plants", "home"]
+      "content": "Water deeply but less often, and let the top few centimetres dry out first. Yellow drooping leaves usually mean too much water rather than too little.",
+      "tags": [
+        "plants",
+        "home"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_arabic_vectors",
       "title": "البحث الدلالي بالمتجهات",
-      "description": "البحث بالمتجهات يخزن التضمينات في فهرس ويقارن التشابه الدلالي بين النصوص بدلا من مطابقة الكلمات المفتاحية. يستخدم مقياس جيب التمام لحساب درجة التشابه بين المتجهات.",
-      "whySaved": "مرجع لمشروع الذاكرة",
-      "tags": ["بحث", "متجهات", "ذكاء-اصطناعي"]
+      "content": "البحث بالمتجهات يخزن التضمينات في فهرس ويقارن التشابه الدلالي بين النصوص بدلا من مطابقة الكلمات المفتاحية. يستخدم مقياس جيب التمام لحساب درجة التشابه بين المتجهات.",
+      "tags": [
+        "بحث",
+        "متجهات",
+        "ذكاء-اصطناعي"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_arabic_istanbul",
       "title": "رحلة إلى اسطنبول",
-      "description": "أفضل وقت للزيارة هو الربيع قبل موسم الازدحام. احجز الفندق في منطقة السلطان أحمد وتنقل ببطاقة المواصلات فهي أوفر بكثير من سيارات الأجرة.",
-      "whySaved": "تخطيط السفر",
-      "tags": ["سفر", "تركيا", "اسطنبول"]
+      "content": "أفضل وقت للزيارة هو الربيع قبل موسم الازدحام. احجز الفندق في منطقة السلطان أحمد وتنقل ببطاقة المواصلات فهي أوفر بكثير من سيارات الأجرة.",
+      "tags": [
+        "سفر",
+        "تركيا",
+        "اسطنبول"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_arabic_coffee",
       "title": "طريقة القهوة العربية",
-      "description": "تحمص البن تحميصا خفيفا ثم يطحن ناعما مع الهيل. تغلى القهوة على نار هادئة ولا تترك حتى تفور بقوة حتى لا يفقد الطعم نكهته.",
-      "whySaved": "وصفة العائلة",
-      "tags": ["قهوة", "طبخ"]
+      "content": "تحمص البن تحميصا خفيفا ثم يطحن ناعما مع الهيل. تغلى القهوة على نار هادئة ولا تترك حتى تفور بقوة حتى لا يفقد الطعم نكهته.",
+      "tags": [
+        "قهوة",
+        "طبخ"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_arabic_budget",
       "title": "ميزانية شهرية بسيطة",
-      "description": "قسم الدخل إلى ثلاثة أقسام: المصاريف الأساسية والادخار والمصاريف الشخصية. راجع المصاريف في نهاية كل شهر وسجل كل مبلغ مهما كان صغيرا.",
-      "whySaved": "تنظيم المصاريف",
-      "tags": ["مال", "ميزانية"]
+      "content": "قسم الدخل إلى ثلاثة أقسام: المصاريف الأساسية والادخار والمصاريف الشخصية. راجع المصاريف في نهاية كل شهر وسجل كل مبلغ مهما كان صغيرا.",
+      "tags": [
+        "مال",
+        "ميزانية"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_mixed_rag",
       "title": "RAG pipeline ملاحظات",
-      "description": "الـ retrieval augmented generation بيعتمد على chunking للنص ثم embedding لكل chunk وبعدين vector search علشان نجيب الـ context قبل ما نبعته للموديل. الجودة بتعتمد على الـ retrieval مش على الـ prompt.",
-      "whySaved": "مرجع سريع for the AI service",
-      "tags": ["rag", "embeddings", "ذكاء-اصطناعي"]
+      "content": "الـ retrieval augmented generation بيعتمد على chunking للنص ثم embedding لكل chunk وبعدين vector search علشان نجيب الـ context قبل ما نبعته للموديل. الجودة بتعتمد على الـ retrieval مش على الـ prompt.",
+      "tags": [
+        "rag",
+        "embeddings",
+        "ذكاء-اصطناعي"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_mixed_standup",
       "title": "Daily standup بالفريق",
-      "description": "الـ standup لازم يكون خمستاشر دقيقة بالكتير. كل واحد يقول عمل ايه امبارح وهيعمل ايه النهاردة وفيه ايه blockers. النقاش الطويل يتأجل لـ meeting منفصل.",
-      "whySaved": "الاجتماعات كانت بتطول",
-      "tags": ["فريق", "agile", "meetings"]
+      "content": "الـ standup لازم يكون خمستاشر دقيقة بالكتير. كل واحد يقول عمل ايه امبارح وهيعمل ايه النهاردة وفيه ايه blockers. النقاش الطويل يتأجل لـ meeting منفصل.",
+      "tags": [
+        "فريق",
+        "agile",
+        "meetings"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_react_keys",
       "title": "React list keys",
-      "description": "Give each list item a stable key from your data, never the array index. Using the index makes React reuse the wrong component when the list is reordered or filtered.",
-      "whySaved": "Bug took an afternoon to find",
-      "tags": ["react", "frontend", "javascript"]
+      "content": "Give each list item a stable key from your data, never the array index. Using the index makes React reuse the wrong component when the list is reordered or filtered.",
+      "tags": [
+        "react",
+        "frontend",
+        "javascript"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_css_grid",
       "title": "CSS grid versus flexbox",
-      "description": "Grid lays out two dimensions at once and suits page structure. Flexbox handles one axis and suits toolbars and button rows. Reach for grid when you find yourself nesting flex containers.",
-      "whySaved": "Layout keeps fighting me",
-      "tags": ["css", "frontend", "layout"]
+      "content": "Grid lays out two dimensions at once and suits page structure. Flexbox handles one axis and suits toolbars and button rows. Reach for grid when you find yourself nesting flex containers.",
+      "tags": [
+        "css",
+        "frontend",
+        "layout"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_rate_limiting",
       "title": "Rate limiting strategies",
-      "description": "A token bucket allows short bursts while capping the sustained rate. A fixed window is simpler but lets twice the limit through at a window boundary. Always return how long the client should wait.",
-      "whySaved": "API abuse last month",
-      "tags": ["api", "backend", "scaling"]
+      "content": "A token bucket allows short bursts while capping the sustained rate. A fixed window is simpler but lets twice the limit through at a window boundary. Always return how long the client should wait.",
+      "tags": [
+        "api",
+        "backend",
+        "scaling"
+      ]
     },
     {
+      "type": "note",
       "memoryId": "mem_oncall_handover",
       "title": "On-call handover checklist",
-      "description": "Write down anything still firing, anything silenced and why, and any change shipped in the last day. The next person should not have to reconstruct the week from dashboards.",
-      "whySaved": "Bad handover caused an outage",
-      "tags": ["oncall", "process", "devops"]
+      "content": "Write down anything still firing, anything silenced and why, and any change shipped in the last day. The next person should not have to reconstruct the week from dashboards.",
+      "tags": [
+        "oncall",
+        "process",
+        "devops"
+      ]
     }
   ],
   "queries": [
-    { "id": "q001", "kind": "direct", "query": "How does Atlas Vector Search index embeddings?", "expectedMemoryIds": ["mem_atlas_vector"] },
-    { "id": "q002", "kind": "direct", "query": "How do I keep a sourdough starter healthy?", "expectedMemoryIds": ["mem_sourdough"] },
-    { "id": "q003", "kind": "direct", "query": "How do I stop blocking the asyncio event loop?", "expectedMemoryIds": ["mem_python_async"] },
-    { "id": "q004", "kind": "direct", "query": "What is the flour to egg ratio for fresh pasta?", "expectedMemoryIds": ["mem_pasta_dough"] },
-    { "id": "q005", "kind": "direct", "query": "Why does Postgres ignore my index?", "expectedMemoryIds": ["mem_postgres_index"] },
-    { "id": "q006", "kind": "direct", "query": "How should I structure a half marathon training plan?", "expectedMemoryIds": ["mem_marathon_plan"] },
-    { "id": "q007", "kind": "direct", "query": "What are the quarterly tax filing deadlines?", "expectedMemoryIds": ["mem_tax_deadlines"] },
-    { "id": "q008", "kind": "direct", "query": "Why should React list keys not be the array index?", "expectedMemoryIds": ["mem_react_keys"] },
-    { "id": "q009", "kind": "direct", "query": "How does docker layer caching speed up builds?", "expectedMemoryIds": ["mem_docker_layers"] },
-    { "id": "q010", "kind": "direct", "query": "What is the coffee to water ratio for pour over?", "expectedMemoryIds": ["mem_coffee_ratio"] },
-
-    { "id": "q011", "kind": "paraphrase", "query": "searching a database by meaning instead of keywords", "expectedMemoryIds": ["mem_atlas_vector", "mem_pgvector", "mem_arabic_vectors"] },
-    { "id": "q012", "kind": "paraphrase", "query": "notes on feeding the bread culture so the loaf rises", "expectedMemoryIds": ["mem_sourdough"] },
-    { "id": "q013", "kind": "paraphrase", "query": "running slow synchronous code without freezing the web server", "expectedMemoryIds": ["mem_python_async"] },
-    { "id": "q014", "kind": "paraphrase", "query": "when are my estimated payments to the government due", "expectedMemoryIds": ["mem_tax_deadlines"] },
-    { "id": "q015", "kind": "paraphrase", "query": "keeping the git history clean before review", "expectedMemoryIds": ["mem_git_rebase"] },
-    { "id": "q016", "kind": "paraphrase", "query": "how long should access tokens live before they expire", "expectedMemoryIds": ["mem_jwt_expiry"] },
-    { "id": "q017", "kind": "paraphrase", "query": "my houseplant leaves are turning yellow and drooping", "expectedMemoryIds": ["mem_plant_watering"] },
-    { "id": "q018", "kind": "paraphrase", "query": "cutting long documents into pieces for a retrieval system", "expectedMemoryIds": ["mem_chunking"] },
-    { "id": "q019", "kind": "paraphrase", "query": "stopping clients from hammering the API too fast", "expectedMemoryIds": ["mem_rate_limiting"] },
-    { "id": "q020", "kind": "paraphrase", "query": "fees eating into long term investment returns", "expectedMemoryIds": ["mem_index_funds"] },
-
-    { "id": "q021", "kind": "multi", "query": "vector search options for storing embeddings", "expectedMemoryIds": ["mem_atlas_vector", "mem_pgvector", "mem_arabic_vectors"] },
-    { "id": "q022", "kind": "multi", "query": "everything I saved about Python", "expectedMemoryIds": ["mem_python_async", "mem_python_typing"] },
-    { "id": "q023", "kind": "multi", "query": "notes about frontend layout and rendering", "expectedMemoryIds": ["mem_react_keys", "mem_css_grid"] },
-    { "id": "q024", "kind": "multi", "query": "personal finance notes", "expectedMemoryIds": ["mem_tax_deadlines", "mem_index_funds", "mem_arabic_budget"] },
-    { "id": "q025", "kind": "multi", "query": "things I saved about making coffee", "expectedMemoryIds": ["mem_coffee_ratio", "mem_arabic_coffee"] },
-    { "id": "q026", "kind": "multi", "query": "how retrieval augmented generation pipelines are built", "expectedMemoryIds": ["mem_chunking", "mem_mixed_rag", "mem_embedding_models"] },
-    { "id": "q027", "kind": "multi", "query": "cooking and recipe notes", "expectedMemoryIds": ["mem_sourdough", "mem_pasta_dough", "mem_arabic_coffee", "mem_coffee_ratio"] },
-    { "id": "q028", "kind": "multi", "query": "devops and deployment practices", "expectedMemoryIds": ["mem_docker_layers", "mem_oncall_handover"] },
-
-    { "id": "q029", "kind": "arabic", "query": "ما الذي حفظته عن البحث بالمتجهات والتشابه الدلالي؟", "expectedMemoryIds": ["mem_arabic_vectors"] },
-    { "id": "q030", "kind": "arabic", "query": "متى أفضل وقت لزيارة اسطنبول وأين أحجز الفندق؟", "expectedMemoryIds": ["mem_arabic_istanbul"] },
-    { "id": "q031", "kind": "arabic", "query": "كيف أحضر القهوة العربية بالهيل؟", "expectedMemoryIds": ["mem_arabic_coffee"] },
-    { "id": "q032", "kind": "arabic", "query": "ازاي أنظم ميزانيتي الشهرية؟", "expectedMemoryIds": ["mem_arabic_budget"] },
-    { "id": "q033", "kind": "arabic", "query": "كيف يقارن النظام معنى النصوص بدل الكلمات المفتاحية؟", "expectedMemoryIds": ["mem_arabic_vectors"] },
-    { "id": "q034", "kind": "arabic", "query": "نصائح للسفر والإقامة في تركيا", "expectedMemoryIds": ["mem_arabic_istanbul"] },
-    { "id": "q035", "kind": "arabic", "query": "طريقة تقسيم الدخل والادخار", "expectedMemoryIds": ["mem_arabic_budget"] },
-
-    { "id": "q036", "kind": "mixed", "query": "ازاي الـ RAG pipeline بيشتغل مع chunking و embeddings؟", "expectedMemoryIds": ["mem_mixed_rag"] },
-    { "id": "q037", "kind": "mixed", "query": "الـ standup المفروض يستغرق قد ايه؟", "expectedMemoryIds": ["mem_mixed_standup"] },
-    { "id": "q038", "kind": "mixed", "query": "vector search بالعربي يعني ايه؟", "expectedMemoryIds": ["mem_arabic_vectors", "mem_atlas_vector"] },
-    { "id": "q039", "kind": "mixed", "query": "ملاحظات عن الـ daily meetings مع الفريق", "expectedMemoryIds": ["mem_mixed_standup"] },
-
-    { "id": "q040", "kind": "crosslingual", "query": "semantic vector search using cosine similarity", "expectedMemoryIds": ["mem_arabic_vectors", "mem_atlas_vector", "mem_pgvector"] },
-    { "id": "q041", "kind": "crosslingual", "query": "travel advice for Istanbul in spring", "expectedMemoryIds": ["mem_arabic_istanbul"] },
-    { "id": "q042", "kind": "crosslingual", "query": "how to make Arabic coffee with cardamom", "expectedMemoryIds": ["mem_arabic_coffee"] },
-    { "id": "q043", "kind": "crosslingual", "query": "كيف أوقف الكود المتزامن من تعطيل السيرفر؟", "expectedMemoryIds": ["mem_python_async"] },
-
-    { "id": "q044", "kind": "vague", "query": "that thing I saved about databases", "expectedMemoryIds": ["mem_atlas_vector", "mem_pgvector", "mem_postgres_index"] },
-    { "id": "q045", "kind": "vague", "query": "the cooking one", "expectedMemoryIds": ["mem_sourdough", "mem_pasta_dough"] },
-    { "id": "q046", "kind": "vague", "query": "the music practice note", "expectedMemoryIds": ["mem_guitar_barre"] },
-    { "id": "q047", "kind": "vague", "query": "that health thing", "expectedMemoryIds": ["mem_sleep_hygiene", "mem_marathon_plan"] },
-    { "id": "q048", "kind": "vague", "query": "the travel note", "expectedMemoryIds": ["mem_lisbon_trip", "mem_arabic_istanbul"] },
-    { "id": "q049", "kind": "vague", "query": "something about performance", "expectedMemoryIds": ["mem_postgres_index", "mem_docker_layers", "mem_rate_limiting"] },
-
-    { "id": "q050", "kind": "related-not-relevant", "query": "how do I create a hnsw index in Postgres", "expectedMemoryIds": ["mem_pgvector"] },
-    { "id": "q051", "kind": "related-not-relevant", "query": "what grind size for espresso", "expectedMemoryIds": ["mem_coffee_ratio"] },
-    { "id": "q052", "kind": "related-not-relevant", "query": "should I use flexbox for a navigation bar", "expectedMemoryIds": ["mem_css_grid"] },
-    { "id": "q053", "kind": "related-not-relevant", "query": "revoking a compromised session token", "expectedMemoryIds": ["mem_jwt_expiry"] },
-
-    { "id": "q054", "kind": "no-match", "query": "how do I change a flat car tyre on the motorway", "expectedMemoryIds": [] },
-    { "id": "q055", "kind": "no-match", "query": "best fertiliser for tomato plants in clay soil", "expectedMemoryIds": [] },
-    { "id": "q056", "kind": "no-match", "query": "what is the capital of Peru", "expectedMemoryIds": [] },
-    { "id": "q057", "kind": "no-match", "query": "rules of cricket lbw decisions", "expectedMemoryIds": [] },
-    { "id": "q058", "kind": "no-match", "query": "وصفة كيكة الشوكولاتة بالفرن", "expectedMemoryIds": [] },
-    { "id": "q059", "kind": "no-match", "query": "how to renew a passport in person", "expectedMemoryIds": [] },
-    { "id": "q060", "kind": "no-match", "query": "symptoms of a failing car alternator", "expectedMemoryIds": [] },
-    { "id": "q061", "kind": "no-match", "query": "history of the Ottoman navy", "expectedMemoryIds": [] },
-    { "id": "q062", "kind": "no-match", "query": "كيف أتعلم السباحة للمبتدئين", "expectedMemoryIds": [] },
-    { "id": "q063", "kind": "no-match", "query": "which vitamins interact with blood thinners", "expectedMemoryIds": [] },
-    { "id": "q064", "kind": "no-match", "query": "how to tune a diesel engine turbo", "expectedMemoryIds": [] },
-    { "id": "q065", "kind": "no-match", "query": "what year did the Berlin wall fall", "expectedMemoryIds": [] }
+    {
+      "id": "q001",
+      "kind": "direct",
+      "query": "How does Atlas Vector Search index embeddings?",
+      "expectedMemoryIds": [
+        "mem_atlas_vector"
+      ]
+    },
+    {
+      "id": "q002",
+      "kind": "direct",
+      "query": "How do I keep a sourdough starter healthy?",
+      "expectedMemoryIds": [
+        "mem_sourdough"
+      ]
+    },
+    {
+      "id": "q003",
+      "kind": "direct",
+      "query": "How do I stop blocking the asyncio event loop?",
+      "expectedMemoryIds": [
+        "mem_python_async"
+      ]
+    },
+    {
+      "id": "q004",
+      "kind": "direct",
+      "query": "What is the flour to egg ratio for fresh pasta?",
+      "expectedMemoryIds": [
+        "mem_pasta_dough"
+      ]
+    },
+    {
+      "id": "q005",
+      "kind": "direct",
+      "query": "Why does Postgres ignore my index?",
+      "expectedMemoryIds": [
+        "mem_postgres_index"
+      ]
+    },
+    {
+      "id": "q006",
+      "kind": "direct",
+      "query": "How should I structure a half marathon training plan?",
+      "expectedMemoryIds": [
+        "mem_marathon_plan"
+      ]
+    },
+    {
+      "id": "q007",
+      "kind": "direct",
+      "query": "What are the quarterly tax filing deadlines?",
+      "expectedMemoryIds": [
+        "mem_tax_deadlines"
+      ]
+    },
+    {
+      "id": "q008",
+      "kind": "direct",
+      "query": "Why should React list keys not be the array index?",
+      "expectedMemoryIds": [
+        "mem_react_keys"
+      ]
+    },
+    {
+      "id": "q009",
+      "kind": "direct",
+      "query": "How does docker layer caching speed up builds?",
+      "expectedMemoryIds": [
+        "mem_docker_layers"
+      ]
+    },
+    {
+      "id": "q010",
+      "kind": "direct",
+      "query": "What is the coffee to water ratio for pour over?",
+      "expectedMemoryIds": [
+        "mem_coffee_ratio"
+      ]
+    },
+    {
+      "id": "q011",
+      "kind": "paraphrase",
+      "query": "searching a database by meaning instead of keywords",
+      "expectedMemoryIds": [
+        "mem_atlas_vector",
+        "mem_pgvector",
+        "mem_arabic_vectors"
+      ]
+    },
+    {
+      "id": "q012",
+      "kind": "paraphrase",
+      "query": "notes on feeding the bread culture so the loaf rises",
+      "expectedMemoryIds": [
+        "mem_sourdough"
+      ]
+    },
+    {
+      "id": "q013",
+      "kind": "paraphrase",
+      "query": "running slow synchronous code without freezing the web server",
+      "expectedMemoryIds": [
+        "mem_python_async"
+      ]
+    },
+    {
+      "id": "q014",
+      "kind": "paraphrase",
+      "query": "when are my estimated payments to the government due",
+      "expectedMemoryIds": [
+        "mem_tax_deadlines"
+      ]
+    },
+    {
+      "id": "q015",
+      "kind": "paraphrase",
+      "query": "keeping the git history clean before review",
+      "expectedMemoryIds": [
+        "mem_git_rebase"
+      ]
+    },
+    {
+      "id": "q016",
+      "kind": "paraphrase",
+      "query": "how long should access tokens live before they expire",
+      "expectedMemoryIds": [
+        "mem_jwt_expiry"
+      ]
+    },
+    {
+      "id": "q017",
+      "kind": "paraphrase",
+      "query": "my houseplant leaves are turning yellow and drooping",
+      "expectedMemoryIds": [
+        "mem_plant_watering"
+      ]
+    },
+    {
+      "id": "q018",
+      "kind": "paraphrase",
+      "query": "cutting long documents into pieces for a retrieval system",
+      "expectedMemoryIds": [
+        "mem_chunking"
+      ]
+    },
+    {
+      "id": "q019",
+      "kind": "paraphrase",
+      "query": "stopping clients from hammering the API too fast",
+      "expectedMemoryIds": [
+        "mem_rate_limiting"
+      ]
+    },
+    {
+      "id": "q020",
+      "kind": "paraphrase",
+      "query": "fees eating into long term investment returns",
+      "expectedMemoryIds": [
+        "mem_index_funds"
+      ]
+    },
+    {
+      "id": "q021",
+      "kind": "multi",
+      "query": "vector search options for storing embeddings",
+      "expectedMemoryIds": [
+        "mem_atlas_vector",
+        "mem_pgvector",
+        "mem_arabic_vectors"
+      ]
+    },
+    {
+      "id": "q022",
+      "kind": "multi",
+      "query": "everything I saved about Python",
+      "expectedMemoryIds": [
+        "mem_python_async",
+        "mem_python_typing"
+      ]
+    },
+    {
+      "id": "q023",
+      "kind": "multi",
+      "query": "notes about frontend layout and rendering",
+      "expectedMemoryIds": [
+        "mem_react_keys",
+        "mem_css_grid"
+      ]
+    },
+    {
+      "id": "q024",
+      "kind": "multi",
+      "query": "personal finance notes",
+      "expectedMemoryIds": [
+        "mem_tax_deadlines",
+        "mem_index_funds",
+        "mem_arabic_budget"
+      ]
+    },
+    {
+      "id": "q025",
+      "kind": "multi",
+      "query": "things I saved about making coffee",
+      "expectedMemoryIds": [
+        "mem_coffee_ratio",
+        "mem_arabic_coffee"
+      ]
+    },
+    {
+      "id": "q026",
+      "kind": "multi",
+      "query": "how retrieval augmented generation pipelines are built",
+      "expectedMemoryIds": [
+        "mem_chunking",
+        "mem_mixed_rag",
+        "mem_embedding_models"
+      ]
+    },
+    {
+      "id": "q027",
+      "kind": "multi",
+      "query": "cooking and recipe notes",
+      "expectedMemoryIds": [
+        "mem_sourdough",
+        "mem_pasta_dough",
+        "mem_arabic_coffee",
+        "mem_coffee_ratio"
+      ]
+    },
+    {
+      "id": "q028",
+      "kind": "multi",
+      "query": "devops and deployment practices",
+      "expectedMemoryIds": [
+        "mem_docker_layers",
+        "mem_oncall_handover"
+      ]
+    },
+    {
+      "id": "q029",
+      "kind": "arabic",
+      "query": "ما الذي حفظته عن البحث بالمتجهات والتشابه الدلالي؟",
+      "expectedMemoryIds": [
+        "mem_arabic_vectors"
+      ]
+    },
+    {
+      "id": "q030",
+      "kind": "arabic",
+      "query": "متى أفضل وقت لزيارة اسطنبول وأين أحجز الفندق؟",
+      "expectedMemoryIds": [
+        "mem_arabic_istanbul"
+      ]
+    },
+    {
+      "id": "q031",
+      "kind": "arabic",
+      "query": "كيف أحضر القهوة العربية بالهيل؟",
+      "expectedMemoryIds": [
+        "mem_arabic_coffee"
+      ]
+    },
+    {
+      "id": "q032",
+      "kind": "arabic",
+      "query": "ازاي أنظم ميزانيتي الشهرية؟",
+      "expectedMemoryIds": [
+        "mem_arabic_budget"
+      ]
+    },
+    {
+      "id": "q033",
+      "kind": "arabic",
+      "query": "كيف يقارن النظام معنى النصوص بدل الكلمات المفتاحية؟",
+      "expectedMemoryIds": [
+        "mem_arabic_vectors"
+      ]
+    },
+    {
+      "id": "q034",
+      "kind": "arabic",
+      "query": "نصائح للسفر والإقامة في تركيا",
+      "expectedMemoryIds": [
+        "mem_arabic_istanbul"
+      ]
+    },
+    {
+      "id": "q035",
+      "kind": "arabic",
+      "query": "طريقة تقسيم الدخل والادخار",
+      "expectedMemoryIds": [
+        "mem_arabic_budget"
+      ]
+    },
+    {
+      "id": "q036",
+      "kind": "mixed",
+      "query": "ازاي الـ RAG pipeline بيشتغل مع chunking و embeddings؟",
+      "expectedMemoryIds": [
+        "mem_mixed_rag"
+      ]
+    },
+    {
+      "id": "q037",
+      "kind": "mixed",
+      "query": "الـ standup المفروض يستغرق قد ايه؟",
+      "expectedMemoryIds": [
+        "mem_mixed_standup"
+      ]
+    },
+    {
+      "id": "q038",
+      "kind": "mixed",
+      "query": "vector search بالعربي يعني ايه؟",
+      "expectedMemoryIds": [
+        "mem_arabic_vectors",
+        "mem_atlas_vector"
+      ]
+    },
+    {
+      "id": "q039",
+      "kind": "mixed",
+      "query": "ملاحظات عن الـ daily meetings مع الفريق",
+      "expectedMemoryIds": [
+        "mem_mixed_standup"
+      ]
+    },
+    {
+      "id": "q040",
+      "kind": "crosslingual",
+      "query": "semantic vector search using cosine similarity",
+      "expectedMemoryIds": [
+        "mem_arabic_vectors",
+        "mem_atlas_vector",
+        "mem_pgvector"
+      ]
+    },
+    {
+      "id": "q041",
+      "kind": "crosslingual",
+      "query": "travel advice for Istanbul in spring",
+      "expectedMemoryIds": [
+        "mem_arabic_istanbul"
+      ]
+    },
+    {
+      "id": "q042",
+      "kind": "crosslingual",
+      "query": "how to make Arabic coffee with cardamom",
+      "expectedMemoryIds": [
+        "mem_arabic_coffee"
+      ]
+    },
+    {
+      "id": "q043",
+      "kind": "crosslingual",
+      "query": "كيف أوقف الكود المتزامن من تعطيل السيرفر؟",
+      "expectedMemoryIds": [
+        "mem_python_async"
+      ]
+    },
+    {
+      "id": "q044",
+      "kind": "vague",
+      "query": "that thing I saved about databases",
+      "expectedMemoryIds": [
+        "mem_atlas_vector",
+        "mem_pgvector",
+        "mem_postgres_index"
+      ]
+    },
+    {
+      "id": "q045",
+      "kind": "vague",
+      "query": "the cooking one",
+      "expectedMemoryIds": [
+        "mem_sourdough",
+        "mem_pasta_dough"
+      ]
+    },
+    {
+      "id": "q046",
+      "kind": "vague",
+      "query": "the music practice note",
+      "expectedMemoryIds": [
+        "mem_guitar_barre"
+      ]
+    },
+    {
+      "id": "q047",
+      "kind": "vague",
+      "query": "that health thing",
+      "expectedMemoryIds": [
+        "mem_sleep_hygiene",
+        "mem_marathon_plan"
+      ]
+    },
+    {
+      "id": "q048",
+      "kind": "vague",
+      "query": "the travel note",
+      "expectedMemoryIds": [
+        "mem_lisbon_trip",
+        "mem_arabic_istanbul"
+      ]
+    },
+    {
+      "id": "q049",
+      "kind": "vague",
+      "query": "something about performance",
+      "expectedMemoryIds": [
+        "mem_postgres_index",
+        "mem_docker_layers",
+        "mem_rate_limiting"
+      ]
+    },
+    {
+      "id": "q050",
+      "kind": "related-not-relevant",
+      "query": "how do I create a hnsw index in Postgres",
+      "expectedMemoryIds": [
+        "mem_pgvector"
+      ]
+    },
+    {
+      "id": "q051",
+      "kind": "related-not-relevant",
+      "query": "what grind size for espresso",
+      "expectedMemoryIds": [
+        "mem_coffee_ratio"
+      ]
+    },
+    {
+      "id": "q052",
+      "kind": "related-not-relevant",
+      "query": "should I use flexbox for a navigation bar",
+      "expectedMemoryIds": [
+        "mem_css_grid"
+      ]
+    },
+    {
+      "id": "q053",
+      "kind": "related-not-relevant",
+      "query": "revoking a compromised session token",
+      "expectedMemoryIds": [
+        "mem_jwt_expiry"
+      ]
+    },
+    {
+      "id": "q054",
+      "kind": "no-match",
+      "query": "how do I change a flat car tyre on the motorway",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q055",
+      "kind": "no-match",
+      "query": "best fertiliser for tomato plants in clay soil",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q056",
+      "kind": "no-match",
+      "query": "what is the capital of Peru",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q057",
+      "kind": "no-match",
+      "query": "rules of cricket lbw decisions",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q058",
+      "kind": "no-match",
+      "query": "وصفة كيكة الشوكولاتة بالفرن",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q059",
+      "kind": "no-match",
+      "query": "how to renew a passport in person",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q060",
+      "kind": "no-match",
+      "query": "symptoms of a failing car alternator",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q061",
+      "kind": "no-match",
+      "query": "history of the Ottoman navy",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q062",
+      "kind": "no-match",
+      "query": "كيف أتعلم السباحة للمبتدئين",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q063",
+      "kind": "no-match",
+      "query": "which vitamins interact with blood thinners",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q064",
+      "kind": "no-match",
+      "query": "how to tune a diesel engine turbo",
+      "expectedMemoryIds": []
+    },
+    {
+      "id": "q065",
+      "kind": "no-match",
+      "query": "what year did the Berlin wall fall",
+      "expectedMemoryIds": []
+    }
   ]
 }

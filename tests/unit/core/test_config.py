@@ -182,3 +182,29 @@ def test_search_settings_are_frozen() -> None:
 
     with pytest.raises(ValueError, match="frozen"):
         config.top_k = 10  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------
+# Atlas names (contract section 12)
+# --------------------------------------------------------------------------
+def test_the_atlas_collection_and_index_default_to_the_contract_names() -> None:
+    from memovo_ai.core.config import AtlasSettings
+
+    settings = AtlasSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.collection == "memory_vectors"
+    assert settings.index == "vector_index"
+
+
+def test_the_atlas_names_remain_overridable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Backend provisions Atlas, so a differently named deployment must
+    still be reachable without a code change."""
+    from memovo_ai.core.config import AtlasSettings
+
+    monkeypatch.setenv("MEMOVO_ATLAS_COLLECTION", "other_vectors")
+    monkeypatch.setenv("MEMOVO_ATLAS_INDEX", "other_index")
+
+    settings = AtlasSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.collection == "other_vectors"
+    assert settings.index == "other_index"

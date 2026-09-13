@@ -196,12 +196,19 @@ def test_the_service_publishes_exactly_the_expected_paths(
 ) -> None:
     """Catches an endpoint added by accident.
 
-    The Backend contract is two endpoints; everything else must be a
-    deliberate operational addition.
+    The Backend contract is four endpoints (contract section 5); everything
+    else must be a deliberate operational addition.
     """
     paths = set(unavailable.get("/openapi.json").json()["paths"])
 
-    assert paths == {"/ai/memories/process", "/ai/memories/search", HEALTH, READY}
+    assert paths == {
+        "/ai/memories/process",
+        "/ai/memories/search",
+        "/ai/chat/memories",
+        "/ai/memories/prepare-note",
+        HEALTH,
+        READY,
+    }
 
 
 def test_the_probes_are_tagged_separately(unavailable: TestClient) -> None:

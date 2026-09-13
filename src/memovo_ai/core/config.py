@@ -16,17 +16,39 @@ __all__ = [
     "ATLAS_VECTOR_PROVIDER",
     "DEFAULT_EMBEDDING_DIMENSION",
     "DEFAULT_EMBEDDING_MODEL",
+    "DEFAULT_ENV",
+    "DEFAULT_GENERATION_MODEL",
+    "DEFAULT_OPENROUTER_BASE_URL",
     "DEFAULT_SEARCH_SIMILARITY_THRESHOLD",
     "DEFAULT_SEARCH_TOP_K",
     "FAKE_VECTOR_PROVIDER",
     "JSON_LOG_FORMAT",
+    "OPENROUTER_GENERATION_PROVIDER",
+    "PRODUCTION_ENV",
     "TEXT_LOG_FORMAT",
     "AtlasSettings",
     "EmbeddingSettings",
+    "GenerationSettings",
+    "InvalidConfigurationError",
     "LoggingSettings",
+    "OpenRouterSettings",
     "ProviderSettings",
+    "RuntimeSettings",
     "SearchSettings",
 ]
+
+
+class InvalidConfigurationError(Exception):
+    """The service is configured in a way it must refuse to run with.
+
+    Distinct from the failures ``main`` tolerates. A missing model or an
+    unreachable Atlas cluster can resolve on its own, so the service starts
+    unready and says so; a wrong *setting* cannot, and a process that keeps
+    serving with one is the more dangerous outcome. Deliberately not a
+    ``ValueError``, because startup catches that one and degrades instead of
+    failing.
+    """
+
 
 #: Locked by the Sprint 1 model decision.
 DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
@@ -124,6 +146,42 @@ class SearchSettings(BaseSettings):
     )
 
 
+#: Deployment environment names. ``production`` is the only one that carries
+#: behaviour: it refuses configurations that are fine to develop against but
+#: would silently serve nothing in front of real users.
+PRODUCTION_ENV = "production"
+DEFAULT_ENV = "development"
+
+
+class RuntimeSettings(BaseSettings):
+    """Which deployment environment this process is running in.
+
+    Reads ``MEMOVO_ENV``, which doc 06 section 10 already lists. Until now
+    nothing consumed it; the production guard on the vector provider is its
+    first use.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    env: str = DEFAULT_ENV
+
+    @property
+    def is_production(self) -> bool:
+        """Case- and whitespace-insensitive, because this gates a guard.
+
+        ``MEMOVO_ENV=Production`` must not quietly fall through to the
+        development path -- the whole point of the check is that a small
+        configuration mistake cannot disable it.
+        """
+        return self.env.strip().lower() == PRODUCTION_ENV
+
+
 #: In-memory adapter for development and tests.
 FAKE_VECTOR_PROVIDER = "fake"
 #: MongoDB Atlas Vector Search.
@@ -172,11 +230,13 @@ class AtlasSettings(BaseSettings):
 
     database: str = "memovo"
 
-    #: Collection the Backend writes chunk documents into.
-    collection: str = "memory_chunks"
+    #: Collection the Backend writes chunk documents into (contract
+    #: section 12). Overridable, because the Backend provisions Atlas.
+    collection: str = "memory_vectors"
 
-    #: Name of the Atlas Vector Search index on that collection.
-    index: str = "memory_chunks_vector_index"
+    #: Name of the Atlas Vector Search index on that collection (contract
+    #: section 12).
+    index: str = "vector_index"
 
     #: Document field holding the 1024-dimension vector.
     path: str = "embedding"
@@ -248,3 +308,80 @@ class LoggingSettings(BaseSettings):
         resolved = logging.getLevelName(self.level.strip().upper())
 
         return resolved if isinstance(resolved, int) else logging.INFO
+
+
+#: The only generation provider (plan section 5). There is no "fake" name on
+#: purpose: fake generation is constructed in code, never selected by config,
+#: so a production deployment cannot serve fabricated answers by mistake.
+OPENROUTER_GENERATION_PROVIDER = "openrouter"
+#: The approved model, exactly. No paid, alternate or ``openrouter/free``
+#: fallback without new owner approval.
+DEFAULT_GENERATION_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+class GenerationSettings(BaseSettings):
+    """Answer generation configuration (``MEMOVO_GENERATION_`` prefix).
+
+    Disabled by default. Processing and search never depend on any of this;
+    only Memory Chat and note preparation do.
+
+    The numeric limits are provisional operating defaults chosen to be safe,
+    not measured targets. They are re-baselined against the real endpoint
+    (plan P6/P7) and are all overridable.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_GENERATION_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    enabled: bool = False
+    provider: str = OPENROUTER_GENERATION_PROVIDER
+    model: str = DEFAULT_GENERATION_MODEL
+
+    #: Deadline for one generation call, including any wait for a slot.
+    timeout_seconds: float = Field(default=60.0, gt=0)
+    #: In-flight generation calls per process.
+    max_concurrency: int = Field(default=4, ge=1)
+    #: Hard caps forwarded to the provider as ``max_tokens``, one per
+    #: operation: a chat answer is short, a prepared note can be a whole
+    #: cleaned document (up to the 10,000-character Note limit).
+    chat_max_output_tokens: int = Field(default=1024, ge=1)
+    note_max_output_tokens: int = Field(default=4096, ge=1)
+    #: The model context the budget check assumes, and the conservative
+    #: characters-per-token estimate used because the generator tokenizer
+    #: is not available in-process. Retain the conservative 40,960-token
+    #: operating budget during the model migration; this is not a claim
+    #: about the provider's full context. Over-budget requests fail, never trim.
+    context_window_tokens: int = Field(default=40_960, ge=1)
+    chars_per_token: float = Field(default=2.0, gt=0)
+    #: Upper bound on a forwarded ``Retry-After`` (contract section 21.2.1).
+    retry_after_max_seconds: int = Field(default=30, ge=0)
+
+
+class OpenRouterSettings(BaseSettings):
+    """OpenRouter connection (``MEMOVO_OPENROUTER_`` prefix).
+
+    The key is a :class:`~pydantic.SecretStr`: it never appears in a repr, a
+    log line or a traceback. There is no default key; an empty value means
+    generation cannot be enabled, and the service says so at startup.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEMOVO_OPENROUTER_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    base_url: str = DEFAULT_OPENROUTER_BASE_URL
+    api_key: SecretStr = SecretStr("")
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.api_key.get_secret_value().strip())

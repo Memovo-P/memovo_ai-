@@ -115,11 +115,7 @@ def test_a_relevant_memory_is_returned(client: TestClient) -> None:
                 "title": "MongoDB Vector Search",
                 "tags": ["mongodb", "vector-search"],
                 "chunks": [
-                    {
-                        "chunkId": "memory_456_chunk_0",
-                        "chunkIndex": 0,
-                        "content": "MongoDB Vector Search...",
-                    }
+                    {"chunkId": "memory_456_chunk_0", "content": "MongoDB Vector Search..."}
                 ],
             }
         ],
@@ -136,7 +132,10 @@ def test_multiple_chunks_are_returned_in_reading_order() -> None:
     for http in client_for(records):
         payload = http.post(ENDPOINT, json={"query": "q", "userId": USER}).json()
 
-        assert [c["chunkIndex"] for c in payload["results"][0]["chunks"]] == [0, 1]
+        assert [c["chunkId"] for c in payload["results"][0]["chunks"]] == [
+            "memory_456_chunk_0",
+            "memory_456_chunk_1",
+        ]
 
 
 # --------------------------------------------------------------------------
@@ -146,11 +145,7 @@ def test_no_match_returns_the_exact_contract_payload(empty_client: TestClient) -
     response = empty_client.post(ENDPOINT, json={"query": "anything", "userId": USER})
 
     assert response.status_code == 200
-    assert response.json() == {
-        "found": False,
-        "results": [],
-        "message": "I couldn't find a relevant memory",
-    }
+    assert response.json() == {"found": False, "results": []}
 
 
 def test_an_irrelevant_match_returns_no_match() -> None:
@@ -175,6 +170,9 @@ def test_no_match_is_not_an_http_error(empty_client: TestClient) -> None:
         {"userId": USER},
         {},
         {"query": "q", "userId": USER, "topK": 5},
+        {"query": "q", "userId": USER, "type": "note"},
+        {"query": "q", "userId": USER, "memoryType": "link"},
+        {"query": "q", "userId": USER, "limit": 5},
         {"query": "q", "user_id": USER},
         {"query": 1, "userId": USER},
         {"query": "q", "userId": 123},

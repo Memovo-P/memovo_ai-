@@ -21,6 +21,7 @@ from starlette.routing import Route
 
 from memovo_ai.core.logging import (
     CORRELATION_ID_HEADER,
+    CORRELATION_SCOPE_KEY,
     Timer,
     bind_correlation_id,
     current_correlation_id,
@@ -73,6 +74,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         token = bind_correlation_id(request.headers.get(CORRELATION_ID_HEADER))
         correlation_id = current_correlation_id()
+
+        # Also on the scope, so the exception handlers can reach it. They run
+        # in ServerErrorMiddleware, outside this middleware, where neither
+        # the ContextVar nor the response object is available any more.
+        request.scope[CORRELATION_SCOPE_KEY] = correlation_id
+
         elapsed = Timer()
 
         try:

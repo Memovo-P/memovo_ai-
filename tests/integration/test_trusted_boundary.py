@@ -267,10 +267,10 @@ def test_a_missing_user_id_is_a_validation_error_not_an_auth_error(
 
 def test_process_ignores_credentials_too(client: TestClient) -> None:
     body = {
+        "type": "note",
         "memoryId": "memory_1",
         "title": "a title",
-        "description": "a description",
-        "whySaved": "because",
+        "content": "a description",
         "tags": [],
     }
 
@@ -307,8 +307,17 @@ def test_no_authentication_library_is_imported() -> None:
     assert imported_names() & AUTH_PACKAGES == set()
 
 
+#: The one module allowed to spell the header: it *sends* a bearer token to
+#: the generation provider on an outbound request. Nothing under ``src``
+#: reads an inbound one, and the list is exact so a second mention anywhere
+#: still fails.
+OUTBOUND_CREDENTIAL_CLIENTS = ("providers/generation/openrouter.py",)
+
+
 def test_no_source_file_reads_the_authorization_header() -> None:
-    assert files_mentioning(["authorization"]) == []
+    assert files_mentioning(["authorization"]) == [
+        f"{path}:authorization" for path in OUTBOUND_CREDENTIAL_CLIENTS
+    ]
 
 
 def test_no_source_file_reads_a_cookie() -> None:
@@ -366,7 +375,12 @@ def test_no_authorization_or_role_logic_exists() -> None:
 
 
 def test_no_jwt_decoding_happens_anywhere() -> None:
-    assert files_mentioning(["jwt", "decode_token", "verify_token", "bearer"]) == []
+    assert files_mentioning(["jwt", "decode_token", "verify_token"]) == []
+    # "bearer" is spelled once: on the outbound provider request, never on
+    # anything inbound. The list is exact, so any other mention fails.
+    assert files_mentioning(["bearer"]) == [
+        f"{path}:bearer" for path in OUTBOUND_CREDENTIAL_CLIENTS
+    ]
 
 
 def test_no_session_handling_exists() -> None:

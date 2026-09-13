@@ -73,12 +73,26 @@ class MemorySearchService:
 
     async def search(self, request: SearchMemoryRequest) -> SearchMemoryResponse:
         """Retrieve the Memories relevant to ``request.query`` for its user."""
+        ranked = await self.retrieve(user_id=request.user_id, query=request.query)
+
+        if not ranked:
+            return SearchMemoryNoMatchResponse()
+
+        return SearchMemorySuccessResponse(results=[_to_result(memory) for memory in ranked])
+
+    async def retrieve(self, *, user_id: str, query: str) -> list[RankedMemory]:
+        """The retrieval pipeline itself, shared with Memory Chat.
+
+        Same embedding, same user pre-filter, same Top-K, threshold,
+        deduplication and ranking whichever endpoint calls it; chat adds
+        generation on top, never a different retrieval.
+        """
         with timed() as embedding_elapsed:
-            query_embedding = await self._embeddings.embed_query(request.query)
+            query_embedding = await self._embeddings.embed_query(query)
 
         with timed() as search_elapsed:
             hits = await self._vector_search.search(
-                user_id=request.user_id,
+                user_id=user_id,
                 query_embedding=query_embedding,
                 top_k=self._settings.top_k,
             )
@@ -87,14 +101,14 @@ class MemorySearchService:
         ranked = rank_memories(relevant)
 
         # Counts and durations only. The query, the hits and the chunk text
-        # they carry are exactly what doc 06 section 5 forbids logging; the
+        # they carry are exactly what the privacy rules forbid logging; the
         # query's length is kept because it explains a slow embedding call
         # without revealing what was asked.
         log_event(
             _logger,
             "memory.searched",
-            user=hash_user_id(request.user_id, salt=self._user_salt),
-            query_chars=len(request.query),
+            user=hash_user_id(user_id, salt=self._user_salt),
+            query_chars=len(query),
             top_k=self._settings.top_k,
             threshold=self._settings.similarity_threshold,
             embedding_ms=embedding_elapsed.ms,
@@ -104,29 +118,26 @@ class MemorySearchService:
             matched=bool(ranked),
         )
 
-        if not ranked:
-            return SearchMemoryNoMatchResponse()
-
-        return SearchMemorySuccessResponse(results=[_to_result(memory) for memory in ranked])
+        return ranked
 
 
 def _to_result(memory: RankedMemory) -> SearchResult:
-    """Map a ranked Memory onto the public contract.
+    """Map a ranked Memory onto the public contract (section 16.1).
 
     The mapping is explicit field by field, which is what keeps internal
-    fields -- ``user_id`` on a hit above all -- out of the response.
+    fields -- ``user_id`` on a hit above all, and ``chunk_index`` -- out of
+    the response.
     """
     return SearchResult(
         memoryId=memory.memory_id,
         score=memory.score,
         title=memory.title,
         tags=list(memory.tags),
+        # Chunks arrive in reading order (chunkIndex ascending); the index
+        # itself stays internal, since the contract's chunk carries only
+        # ``chunkId`` and ``content`` (section 16.1).
         chunks=[
-            SearchResultChunk(
-                chunkId=chunk.chunk_id,
-                chunkIndex=chunk.chunk_index,
-                content=chunk.content,
-            )
+            SearchResultChunk(chunkId=chunk.chunk_id, content=chunk.content)
             for chunk in memory.chunks
         ],
     )

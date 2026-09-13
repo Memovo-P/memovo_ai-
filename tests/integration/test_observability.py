@@ -41,7 +41,6 @@ USER = "user_123"
 #: Deliberately distinctive, so a leak anywhere in a log line is unmissable.
 PRIVATE_TITLE = "ZZQTITLE-appointment-with-the-cardiologist"
 PRIVATE_DESCRIPTION = "ZZQDESC-blood-pressure-readings-were-high-again"
-PRIVATE_WHY_SAVED = "ZZQWHY-so-I-remember-to-book-the-follow-up"
 PRIVATE_TAG = "ZZQTAG-health"
 PRIVATE_QUERY = "ZZQQUERY-what-did-the-cardiologist-say"
 PRIVATE_CHUNK = "ZZQCHUNK-stored-chunk-text-from-the-index"
@@ -49,17 +48,16 @@ PRIVATE_CHUNK = "ZZQCHUNK-stored-chunk-text-from-the-index"
 PRIVATE_VALUES = (
     PRIVATE_TITLE,
     PRIVATE_DESCRIPTION,
-    PRIVATE_WHY_SAVED,
     PRIVATE_TAG,
     PRIVATE_QUERY,
     PRIVATE_CHUNK,
 )
 
 PROCESS_BODY: dict[str, object] = {
+    "type": "note",
     "memoryId": "memory_456",
     "title": PRIVATE_TITLE,
-    "description": PRIVATE_DESCRIPTION,
-    "whySaved": PRIVATE_WHY_SAVED,
+    "content": PRIVATE_DESCRIPTION,
     "tags": [PRIVATE_TAG],
 }
 
@@ -375,7 +373,7 @@ def test_an_empty_memory_is_still_recorded(
     client: TestClient, logs: pytest.LogCaptureFixture
 ) -> None:
     """The zero-chunk path must not be an observability blind spot."""
-    empty = {"memoryId": "memory_789", "title": "", "description": "", "whySaved": "", "tags": []}
+    empty = {"type": "note", "memoryId": "memory_789", "title": "", "content": " ", "tags": []}
 
     assert client.post(PROCESS, json=empty).status_code == 200
     assert events(logs, "memory.processed")[0]["chunk_count"] == 0

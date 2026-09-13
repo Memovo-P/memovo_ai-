@@ -1,30 +1,34 @@
 # Memovo AI Service
 
-AI processing and retrieval service for Memovo. **Sprint 1 is RAG-only.**
+Memory processing, retrieval, grounded Memory Chat and explicit note preparation for Memovo.
 
-The authoritative specification lives in the sibling `memovo-ai-docs/` repository.
-Those documents are the source of truth; this README does not restate them.
+The canonical wire contract is [docs/AI_CONTRACT_FINAL.md](docs/AI_CONTRACT_FINAL.md) (v1.9 plus the
+addendum in its section 21.9). The implementation plan and current status are in
+[docs/SPRINT2_GENERATION_PLAN.md](docs/SPRINT2_GENERATION_PLAN.md); the deployment and integration
+guide, including what is and is not verified, is [docs/deployment.md](docs/deployment.md).
 
-## Sprint 1 endpoints
+## Endpoints
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /ai/memories/process` | Chunk a Memory and return the complete chunk set with embeddings |
-| `POST /ai/memories/search` | Embed a query and retrieve the user's matching Memories |
+| `POST /ai/memories/process` | Chunk a Note or Link and return the complete chunk set with 1024-d embeddings |
+| `POST /ai/memories/search` | Embed a query and retrieve the user's matching memories |
+| `POST /ai/chat/memories` | Answer a question grounded only in the user's retrieved memories |
+| `POST /ai/memories/prepare-note` | Turn raw content into a title and cleaned note content |
+| `GET /health`, `GET /ready` | Liveness and readiness probes (outside the contract) |
 
-Nothing else is in scope. No chat, agents, tool calling, answer generation,
-authentication, or database writes.
+Out of scope by contract: general chat, intent detection, agents and tools, memory mutation,
+authentication, URL fetching, and any database write.
 
 ## Responsibility boundary
 
-This service owns content preparation, chunking, embeddings, vector search,
-similarity filtering, and ranking.
+This service owns canonical content, chunking, embeddings, read-only user-scoped vector
+retrieval, answer generation and note preparation. The Backend owns authentication and the
+trusted `userId`, authorization, persistence, vector writes/reconciliation/cleanup, link
+extraction, conversation history, queues and retries.
 
-The Backend owns authentication, the trusted `userId`, authorization, business
-logic, MongoDB persistence, Vector DB persistence, idempotency, and queues.
-
-**This service never writes to MongoDB or the Vector DB.** Its vector
-integration is read-only.
+**This service never writes to MongoDB or the vector index, never fetches a URL, and never
+retries an upstream call.**
 
 ## Requirements
 
@@ -38,30 +42,22 @@ uv sync
 cp .env.example .env
 ```
 
-This installs everything needed for development and the full test suite. The
-model runtime is an optional extra, kept out of the default install so `uv sync`
-and CI stay light:
+The default install runs the whole suite with deterministic fakes: no model weights, no
+cluster, no network. Optional extras:
 
 ```bash
-uv sync --extra embeddings    # adds sentence-transformers (pulls torch)
+uv sync --extra embeddings    # sentence-transformers (pulls torch) for the real Qwen3 embedder
+uv sync --extra atlas         # pymongo for MongoDB Atlas Vector Search
 ```
 
-Unit tests inject a fake encoder, so they never import the runtime and never
-download weights. The real model is exercised only by an opt-in integration
-test:
+Opt-in real dependencies, never run by default:
 
 ```bash
-MEMOVO_RUN_EMBEDDING_INTEGRATION=1 uv run pytest tests/integration -s
+MEMOVO_RUN_EMBEDDING_INTEGRATION=1 uv run pytest tests/integration/test_embedding_model.py -s
+MEMOVO_RUN_OPENROUTER_SMOKE=1     uv run pytest tests/integration/test_openrouter_live.py -s
 ```
 
-It downloads roughly 1.2 GB on first run and reports the model's output
-normalization and query-prompt availability. Because the app skips building
-services at startup under test, the suite behaves identically whether or not
-this extra is installed.
-
-## Verification gate
-
-Every phase must pass all five commands before it is considered complete:
+## Quality gate
 
 ```bash
 uv run pytest
@@ -70,81 +66,33 @@ uv run ruff format --check .
 uv run mypy src
 ```
 
-`uv sync` must succeed first.
-
 ## Running the service
 
 ```bash
 uv run uvicorn memovo_ai.main:app --reload
 ```
 
-Both Sprint 1 endpoints are live: `POST /ai/memories/process` (Notes and
-Links) and `POST /ai/memories/search`. Link page content is extracted by the
-Backend and sent in the request; this service never fetches a URL. Without the `embeddings` extra installed the model
-cannot load, so the service starts in an unavailable state and requests fail
-with `MODEL_UNAVAILABLE` rather than silently reporting no memories.
+Generation is disabled by default (`MEMOVO_GENERATION_ENABLED=false`); processing and search never
+need it. When enabled, the only provider is OpenRouter and the model is exactly the approved
+`nvidia/nemotron-3-super-120b-a12b:free`; the key lives in the local `.env` or the deployment secret store. See
+[docs/deployment.md](docs/deployment.md) for every setting, the error table, the migration notes
+and the current verification status.
 
-This service is internal and must not be exposed publicly; the Backend is the
-only caller.
+## Evaluation
 
-Two operational probes sit outside the contract: `GET /health` (liveness --
-is the process alive) and `GET /ready` (readiness -- should it receive
-traffic). Never point a liveness probe at `/ready`.
+`eval/` holds the retrieval quality dataset and threshold sweep, and the generation datasets
+(fixed-evidence chat, note preparation) with their harness. See [eval/README.md](eval/README.md).
 
 ## Docker
 
 ```bash
-# Production image: Qwen3 weights baked in, so startup is offline.
-docker build -t memovo-ai:0.1.0 .
-
-# Fast local image: no weights, downloaded on first start.
-docker build --build-arg BAKE_MODEL=false -t memovo-ai:thin .
-
+docker build -t memovo-ai:<release> .                          # embedding weights baked in
+docker build --build-arg BAKE_MODEL=false -t memovo-ai:thin .  # build check only
 docker compose up --build
 ```
 
-Deployment topology, probe wiring, scaling and the production environment
-variables are in [docs/deployment.md](docs/deployment.md).
+## Status
 
-## Retrieval evaluation
-
-`eval/` holds the quality dataset and the threshold sweep. See
-[eval/README.md](eval/README.md) for how to run it and the current results.
-
-## Repository layout
-
-The target layout is defined in `memovo-ai-docs/04_REPOSITORY_STRUCTURE.md`.
-Directories are created phase by phase as the code that belongs in them is
-written, rather than all at once as empty scaffolding.
-
-## Build status
-
-| Phase | Status |
-|---|---|
-| 00 - Repository foundation | Complete |
-| 01 - API contract schemas | Complete |
-| 02 - Canonical content preparation | Complete |
-| 03 - Hybrid chunker | Complete |
-| 04 - Deterministic chunk IDs | Complete |
-| 05 - Embedding provider abstraction | Complete |
-| 06 - Qwen3 embedding integration | Complete |
-| 07 - Memory processor service | Complete |
-| 08 - `/ai/memories/process` route | Complete |
-| 09 - Vector search provider | Complete |
-| 10 - User isolation enforcement | Complete |
-| 11 - Retrieval filtering | Complete |
-| 12 - Ranking and deduplication | Complete |
-| 13 - Memory search service | Complete |
-| 14 - `/ai/memories/search` route | Complete |
-| 15 - Error contract | Complete |
-| 16 - Reprocessing contract tests | Complete |
-| 17 - Link support (`about`, `source`) | Complete |
-| 18 - Privacy and observability | Complete |
-| 19 - Trusted boundary, health and readiness | Complete |
-| 20 - Retrieval evaluation | Complete |
-| 21 - Full test matrix | Not started |
-| 22 - Performance testing | Not started |
-| 23 - Containerization and deployment | Complete |
-| 24 - Backend integration testing | Blocked on a live Atlas cluster |
-| 25 - Sprint 1 acceptance | Not started |
-| Production vector adapter (MongoDB Atlas) | Complete, never run against a live cluster |
+Gates pass locally. The CI workflow in `.github/workflows/ci.yml` has never executed because
+there is no git remote. Live Atlas and the real generation model have not been exercised; the
+reasons and the exact commands to do so are in [docs/deployment.md](docs/deployment.md).

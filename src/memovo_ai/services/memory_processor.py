@@ -1,8 +1,8 @@
 """Memory ingestion orchestration.
 
-The pipeline from doc 03, Phase 07::
+The pipeline::
 
-    ProcessMemoryRequest
+    ProcessMemoryRequest (Note or Link)
       -> canonical content composition
       -> hybrid chunker
       -> deterministic chunk IDs
@@ -14,18 +14,18 @@ Like the search service this layer only composes; every rule lives in the
 component that owns it.
 
 Reprocessing returns the COMPLETE current chunk set, never a diff and never
-only the changed chunks (doc 01, decision 25). This service is stateless with
+only the changed chunks (contract section 13). This service is stateless with
 respect to previous versions of a Memory: it holds no prior chunk set and
 computes no delta. The Backend reconciles old against new.
 
-Notes and Links follow the same path. For a Link the page content was
-extracted by the **Backend** and arrives in ``description``; this service
-never fetches a URL, scrapes a page or crawls anything.
+Notes and Links follow the same path once the canonical text exists. For a
+Link the page content was extracted by the **Backend** and arrives in
+``extractedContent``; this service never fetches a URL, scrapes a page or
+crawls anything (contract section 19).
 
-What this service must never do (doc 03, Phase 07): insert or update MongoDB,
-insert, update or delete vectors, perform authentication or authorization, or
-reach out to the network.
-It returns chunks and embeddings; the Backend persists them.
+What this service must never do: insert or update MongoDB, insert, update or
+delete vectors, perform authentication or authorization, or reach out to the
+network. It returns chunks and embeddings; the Backend persists them.
 """
 
 import logging
@@ -38,6 +38,7 @@ from memovo_ai.core.logging import log_event, safe_text, timed
 from memovo_ai.embeddings.base import EmbeddingProvider
 from memovo_ai.schemas.errors import ErrorCode
 from memovo_ai.schemas.process import (
+    LinkProcessRequest,
     LinkSource,
     ProcessedChunk,
     ProcessMemoryRequest,
@@ -50,22 +51,47 @@ __all__ = ["MemoryProcessorService"]
 _logger = logging.getLogger(__name__)
 
 
-def _embeddable_source(source: LinkSource | None) -> list[str]:
-    """Pick the provenance fields worth putting in front of the embedder.
+def _embeddable_source(source: LinkSource) -> list[str]:
+    """The source metadata worth putting in front of the embedder.
 
-    ``siteName`` and ``publishedAt`` are natural-language-ish and help
-    retrieval ("what did I save from the MongoDB blog?").
-
-    ``favicon`` and ``ogImage`` are deliberately excluded. They are URLs to
-    binary assets: they carry no semantic meaning, and embedding them would
-    dilute the chunk with tokens that can never match a user's query.
-
-    Missing and ``null`` fields are skipped, never rendered as "None".
+    All four AI-facing fields (contract section 8.3), in a fixed order: they
+    are natural-language-ish and help retrieval ("what did I save from the
+    MongoDB blog?", "the article by Jane Doe"). ``null`` and blank values are
+    skipped, never rendered as ``None``.
     """
-    if source is None:
-        return []
+    return [
+        value
+        for value in (
+            source.source_title,
+            source.source_description,
+            source.author_name,
+            source.publication_date,
+        )
+        if value
+    ]
 
-    return [value for value in (source.site_name, source.published_at) if value]
+
+def _canonical_content(request: ProcessMemoryRequest) -> str:
+    """Compose the text to chunk, per memory type.
+
+    A Note contributes title, content and tags. A Link adds the Backend's
+    source metadata and extracted page text (contract section 8.4). The
+    ``url`` is not embedded -- see :mod:`memovo_ai.understanding.content`.
+    """
+    if isinstance(request, LinkProcessRequest):
+        return compose_canonical_content(
+            title=request.title,
+            content=request.content,
+            tags=request.tags,
+            source=_embeddable_source(request.source),
+            extracted_content=request.extracted_content,
+        )
+
+    return compose_canonical_content(
+        title=request.title,
+        content=request.content,
+        tags=request.tags,
+    )
 
 
 class MemoryProcessorService:
@@ -84,22 +110,15 @@ class MemoryProcessorService:
 
     async def process(self, request: ProcessMemoryRequest) -> ProcessMemoryResponse:
         """Chunk and embed a Memory, returning its complete current chunk set."""
-        content = compose_canonical_content(
-            title=request.title,
-            description=request.description,
-            why_saved=request.why_saved,
-            tags=request.tags,
-            about=request.about,
-            source=_embeddable_source(request.source),
-        )
+        content = _canonical_content(request)
 
         with timed() as chunking_elapsed:
             chunks = self._chunk(content)
 
         if not chunks:
-            # Every field was empty, so there is nothing to index. The
-            # contract permits an empty chunk set, and rejecting the request
-            # would invent a validation rule no source document states.
+            # Every field normalized to nothing, so there is nothing to
+            # index. The contract permits an empty chunk set (section 11),
+            # and rejecting the request would invent a validation rule.
             self._log_processed(
                 request.memory_id,
                 content_chars=len(content),
@@ -107,10 +126,10 @@ class MemoryProcessorService:
                 chunking_ms=chunking_elapsed.ms,
                 embedding_ms=0.0,
             )
-            return ProcessMemoryResponse(content=content, chunks=[])
+            return ProcessMemoryResponse(memoryId=request.memory_id, chunks=[])
 
         # One batched call: the provider decides how to split it into forward
-        # passes (doc 02, section 7).
+        # passes.
         with timed() as embedding_elapsed:
             embeddings = await self._embeddings.embed_documents([chunk.content for chunk in chunks])
 
@@ -127,7 +146,7 @@ class MemoryProcessorService:
             raise AiServiceError(ErrorCode.EMBEDDING_FAILED, message=message)
 
         return ProcessMemoryResponse(
-            content=content,
+            memoryId=request.memory_id,
             chunks=[
                 ProcessedChunk(
                     chunkId=chunk_id(
@@ -158,7 +177,7 @@ class MemoryProcessorService:
         """Record the shape and cost of one ingestion.
 
         Sizes and durations only. The canonical content and the chunk text
-        are precisely what doc 06 section 5 forbids logging; their character
+        are precisely what the privacy rules forbid logging; their character
         count is what explains a slow request without revealing it.
 
         ``memoryId`` is an opaque Backend identifier rather than user

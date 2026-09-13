@@ -1,7 +1,8 @@
 """Link ingestion through ``POST /ai/memories/process``.
 
-Phase 17. Extraction is Backend-owned: the payload already contains the page
-content, and the AI Service never fetches a URL.
+Contract v1.9, sections 8.2-8.5 and 19. Extraction is Backend-owned: the
+payload already contains the page text, and the AI Service never fetches a
+URL.
 """
 
 from collections.abc import Iterator, Sequence
@@ -20,27 +21,40 @@ pytestmark = pytest.mark.integration
 ENDPOINT = "/ai/memories/process"
 
 NOTE_BODY: dict[str, object] = {
+    "type": "note",
     "memoryId": "memory_456",
     "title": "MongoDB Vector Search",
-    "description": "How Atlas Vector Search works...",
-    "whySaved": "Useful for the memory project",
+    "content": "How Atlas Vector Search works...",
     "tags": ["mongodb", "vector-search", "ai"],
 }
 
-LINK_BODY: dict[str, object] = {
-    "memoryId": "memory_link_1",
-    "title": "Atlas Vector Search docs",
-    "description": "Atlas Vector Search indexes embeddings for similarity queries.",
-    "whySaved": "",
-    "tags": ["mongodb", "docs"],
-    "about": "Read this before the vector index migration",
-    "source": {
-        "siteName": "MongoDB Docs",
-        "favicon": "https://cdn.example/favicon.ico",
-        "ogImage": "https://cdn.example/og.png",
-        "publishedAt": "2024-01-15",
-    },
+SOURCE: dict[str, object] = {
+    "sourceTitle": "Tech Blog",
+    "sourceDescription": "Articles about AI and ML",
+    "authorName": "Jane Doe",
+    "publicationDate": "2026-09-01",
 }
+
+NULL_SOURCE: dict[str, object] = dict.fromkeys(SOURCE)
+
+LINK_BODY: dict[str, object] = {
+    "type": "link",
+    "memoryId": "memory_link_1",
+    "url": "https://example.com/article",
+    "title": "Understanding Vector Embeddings",
+    "content": "Good reference for understanding embeddings",
+    "tags": ["ai", "embeddings"],
+    "source": SOURCE,
+    "extractedContent": "Vector embeddings are numerical representations...",
+}
+
+LINK_CANONICAL = (
+    "Title:\nUnderstanding Vector Embeddings\n\n"
+    "Content:\nGood reference for understanding embeddings\n\n"
+    "Source:\nTech Blog, Articles about AI and ML, Jane Doe, 2026-09-01\n\n"
+    "Extracted Content:\nVector embeddings are numerical representations...\n\n"
+    "Tags:\nai, embeddings"
+)
 
 
 class StubEmbeddings:
@@ -65,16 +79,23 @@ def client() -> Iterator[TestClient]:
         yield http
 
 
+def first_chunk(client: TestClient, body: dict[str, object]) -> str:
+    response = client.post(ENDPOINT, json=body)
+    assert response.status_code == 200, response.text
+    return str(response.json()["chunks"][0]["content"])
+
+
 # --------------------------------------------------------------------------
 # A Link is accepted and processed
 # --------------------------------------------------------------------------
-def test_a_link_request_is_accepted(client: TestClient) -> None:
+def test_the_documented_link_is_accepted(client: TestClient) -> None:
     assert client.post(ENDPOINT, json=LINK_BODY).status_code == 200
 
 
 def test_a_link_produces_chunks_with_embeddings(client: TestClient) -> None:
     payload = client.post(ENDPOINT, json=LINK_BODY).json()
 
+    assert payload["memoryId"] == "memory_link_1"
     assert payload["chunks"]
     for chunk in payload["chunks"]:
         assert len(chunk["embedding"]) == EMBEDDING_DIMENSION
@@ -85,91 +106,77 @@ def test_a_link_uses_the_same_response_shape_as_a_note(client: TestClient) -> No
     link = client.post(ENDPOINT, json=LINK_BODY).json()
     note = client.post(ENDPOINT, json=NOTE_BODY).json()
 
-    assert set(link) == set(note) == {"intent", "content", "chunks"}
-    assert link["intent"] == note["intent"] == "save_memory"
+    assert set(link) == set(note) == {"memoryId", "chunks"}
 
 
-def test_link_canonical_content_includes_the_available_fields(client: TestClient) -> None:
-    content = client.post(ENDPOINT, json=LINK_BODY).json()["content"]
-
-    assert content == (
-        "Title:\nAtlas Vector Search docs\n\n"
-        "Content:\nAtlas Vector Search indexes embeddings for similarity queries.\n\n"
-        "About:\nRead this before the vector index migration\n\n"
-        "Source:\nMongoDB Docs, 2024-01-15\n\n"
-        "Tags:\nmongodb, docs"
-    )
+def test_link_canonical_content_includes_every_documented_input(client: TestClient) -> None:
+    assert first_chunk(client, LINK_BODY) == LINK_CANONICAL
 
 
-def test_asset_urls_never_reach_the_embedding_input(client: TestClient) -> None:
-    """favicon and ogImage are asset URLs: no semantic value, so excluded."""
-    payload = client.post(ENDPOINT, json=LINK_BODY).json()
+def test_the_url_never_reaches_the_embedding_input(client: TestClient) -> None:
+    body = {**LINK_BODY, "url": "https://unique-host.example/secret-path"}
 
-    assert "favicon" not in payload["content"]
-    assert "og.png" not in payload["content"]
-    for chunk in payload["chunks"]:
-        assert "cdn.example" not in chunk["content"]
-
-
-def test_an_empty_why_saved_is_omitted_from_a_link(client: TestClient) -> None:
-    assert "Why Saved:" not in client.post(ENDPOINT, json=LINK_BODY).json()["content"]
+    for chunk in client.post(ENDPOINT, json=body).json()["chunks"]:
+        assert "unique-host.example" not in chunk["content"]
 
 
 # --------------------------------------------------------------------------
-# Graceful handling of missing metadata
+# Graceful handling of missing metadata and text
 # --------------------------------------------------------------------------
-def test_a_link_with_an_empty_source_object_is_accepted(client: TestClient) -> None:
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {}})
-
-    assert response.status_code == 200
-    assert "Source:" not in response.json()["content"]
-
-
 def test_a_link_with_all_null_source_fields_is_accepted(client: TestClient) -> None:
-    source = dict.fromkeys(("siteName", "favicon", "ogImage", "publishedAt"))
+    content = first_chunk(client, {**LINK_BODY, "source": NULL_SOURCE})
 
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": source})
-
-    assert response.status_code == 200
-    assert "Source:" not in response.json()["content"]
-    assert response.json()["chunks"]
+    assert "Source:" not in content
+    assert "None" not in content
 
 
-def test_a_link_without_about_is_accepted(client: TestClient) -> None:
-    body = {key: value for key, value in LINK_BODY.items() if key != "about"}
+@pytest.mark.parametrize("field", list(SOURCE))
+def test_a_single_available_source_field_is_embedded(client: TestClient, field: str) -> None:
+    source = {**NULL_SOURCE, field: SOURCE[field]}
+
+    assert f"Source:\n{SOURCE[field]}" in first_chunk(client, {**LINK_BODY, "source": source})
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_null_and_empty_user_content_are_accepted(client: TestClient, value: str | None) -> None:
+    content = first_chunk(client, {**LINK_BODY, "content": value})
+
+    assert "Content:\nGood" not in content
+    assert content.startswith("Title:\nUnderstanding Vector Embeddings\n\nSource:")
+    assert "Extracted Content:" in content
+
+
+def test_absent_user_content_is_accepted(client: TestClient) -> None:
+    body = {key: value for key, value in LINK_BODY.items() if key != "content"}
+
+    assert "Content:\nGood" not in first_chunk(client, body)
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_null_and_empty_extracted_content_are_accepted(
+    client: TestClient, value: str | None
+) -> None:
+    assert "Extracted Content:" not in first_chunk(client, {**LINK_BODY, "extractedContent": value})
+
+
+def test_absent_extracted_content_is_accepted(client: TestClient) -> None:
+    body = {key: value for key, value in LINK_BODY.items() if key != "extractedContent"}
+
+    assert "Extracted Content:" not in first_chunk(client, body)
+
+
+def test_a_long_extracted_page_is_accepted_and_chunked(client: TestClient) -> None:
+    """No AI-side character cap (section 8.4); it just becomes more chunks."""
+    body = {**LINK_BODY, "extractedContent": " ".join(f"word{n:05d}" for n in range(6000))}
 
     response = client.post(ENDPOINT, json=body)
 
     assert response.status_code == 200
-    assert "About:" not in response.json()["content"]
+    assert len(response.json()["chunks"]) > 1
 
 
-def test_a_null_about_is_accepted(client: TestClient) -> None:
-    response = client.post(ENDPOINT, json={**LINK_BODY, "about": None})
-
-    assert response.status_code == 200
-    assert "About:" not in response.json()["content"]
-
-
-def test_only_site_name_available(client: TestClient) -> None:
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {"siteName": "MongoDB Docs"}})
-
-    assert "Source:\nMongoDB Docs" in response.json()["content"]
-
-
-def test_only_published_at_available(client: TestClient) -> None:
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {"publishedAt": "2024-01-15"}})
-
-    assert "Source:\n2024-01-15" in response.json()["content"]
-
-
-def test_only_asset_urls_available_yields_no_source_section(client: TestClient) -> None:
-    source = {"favicon": "https://cdn.example/f.ico", "ogImage": "https://cdn.example/o.png"}
-
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": source})
-
-    assert response.status_code == 200
-    assert "Source:" not in response.json()["content"]
+def test_null_tags_are_accepted_on_a_link(client: TestClient) -> None:
+    assert "Tags:" not in first_chunk(client, {**LINK_BODY, "tags": None})
 
 
 # --------------------------------------------------------------------------
@@ -182,53 +189,75 @@ def test_reprocessing_a_link_reproduces_identical_chunk_ids(client: TestClient) 
     assert first == second
 
 
-def test_changing_about_changes_the_chunk_ids(client: TestClient) -> None:
+def test_changing_user_content_changes_the_chunk_ids(client: TestClient) -> None:
     first = client.post(ENDPOINT, json=LINK_BODY).json()
-    second = client.post(ENDPOINT, json={**LINK_BODY, "about": "A different note"}).json()
+    second = client.post(ENDPOINT, json={**LINK_BODY, "content": "A different note"}).json()
 
     assert [c["chunkId"] for c in first["chunks"]] != [c["chunkId"] for c in second["chunks"]]
 
 
-def test_changing_only_a_non_embedded_source_field_keeps_chunk_ids(client: TestClient) -> None:
-    """favicon does not reach the content, so it cannot move a chunk ID."""
-    other = {**LINK_BODY["source"], "favicon": "https://cdn.example/changed.ico"}  # type: ignore[dict-item]
-
+def test_changing_only_the_url_keeps_chunk_ids(client: TestClient) -> None:
     first = client.post(ENDPOINT, json=LINK_BODY).json()
-    second = client.post(ENDPOINT, json={**LINK_BODY, "source": other}).json()
+    second = client.post(ENDPOINT, json={**LINK_BODY, "url": "https://example.com/other"}).json()
 
     assert first == second
 
 
 def test_a_note_is_unaffected_by_link_support(client: TestClient) -> None:
-    """The Note path must be byte-identical to before Phase 17."""
-    payload = client.post(ENDPOINT, json=NOTE_BODY).json()
-
-    assert payload["content"] == (
+    assert first_chunk(client, NOTE_BODY) == (
         "Title:\nMongoDB Vector Search\n\n"
         "Content:\nHow Atlas Vector Search works...\n\n"
-        "Why Saved:\nUseful for the memory project\n\n"
         "Tags:\nmongodb, vector-search, ai"
     )
 
 
 # --------------------------------------------------------------------------
-# Rejections
+# Rejections (contract sections 8.2, 8.3, 8.5)
 # --------------------------------------------------------------------------
-def test_an_undocumented_source_field_is_rejected(client: TestClient) -> None:
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {"author": "someone"}})
+def test_an_empty_source_object_is_rejected(client: TestClient) -> None:
+    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {}})
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "INVALID_INPUT"
+
+
+@pytest.mark.parametrize(
+    "field", ["platform", "contentType", "thumbnailUrl", "canonicalUrl", "siteName", "favicon"]
+)
+def test_a_backend_only_or_legacy_source_field_is_rejected(client: TestClient, field: str) -> None:
+    response = client.post(ENDPOINT, json={**LINK_BODY, "source": {**SOURCE, field: "x"}})
+
+    assert response.status_code == 422
 
 
 def test_a_non_object_source_is_rejected(client: TestClient) -> None:
     assert client.post(ENDPOINT, json={**LINK_BODY, "source": "mongodb.com"}).status_code == 422
 
 
-def test_a_link_still_requires_the_note_fields(client: TestClient) -> None:
-    body = {key: value for key, value in LINK_BODY.items() if key != "title"}
+@pytest.mark.parametrize("field", ["url", "title", "source", "memoryId"])
+def test_a_missing_required_link_field_is_rejected(client: TestClient, field: str) -> None:
+    body = {key: value for key, value in LINK_BODY.items() if key != field}
 
     assert client.post(ENDPOINT, json=body).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("url", "ftp://example.com/file"),
+        ("url", "https://example.com/" + "a" * 2040),
+        ("title", ""),
+        ("title", "t" * 501),
+        ("content", "c" * 1001),
+        ("whySaved", "legacy"),
+        ("about", "legacy"),
+        ("description", "legacy"),
+    ],
+)
+def test_a_link_limit_or_legacy_field_is_enforced(
+    client: TestClient, field: str, value: object
+) -> None:
+    assert client.post(ENDPOINT, json={**LINK_BODY, field: value}).status_code == 422
 
 
 # --------------------------------------------------------------------------
@@ -261,8 +290,6 @@ def test_the_service_imports_no_http_client() -> None:
 
 def test_a_url_in_the_payload_is_never_dereferenced(client: TestClient) -> None:
     """An unreachable host must not cause a failure or a delay."""
-    source = {"siteName": "Example", "favicon": "https://127.0.0.1:9/nope.ico"}
-
-    response = client.post(ENDPOINT, json={**LINK_BODY, "source": source})
+    response = client.post(ENDPOINT, json={**LINK_BODY, "url": "https://127.0.0.1:9/nope"})
 
     assert response.status_code == 200

@@ -1,16 +1,25 @@
 """Public error definitions.
 
-Every public failure serializes to the standardized envelope (doc 03,
-Phase 15)::
+Every public failure serializes to the standardized envelope::
 
     {"error": {"code": ..., "message": ..., "retryable": ...}}
 
 Messages are **fixed per code**, not derived from the underlying exception.
-That is deliberate: doc 06 section 6 forbids leaking stack traces, model
-paths, hostnames, secrets, connection strings and raw SDK errors, and the only
-way to guarantee that for an exception this service did not raise itself is
-never to put its text in the response. Detail belongs in logs (Phase 18),
-keyed by correlation id.
+That is deliberate: stack traces, model paths, hostnames, secrets, connection
+strings and raw SDK errors must never leak, and the only way to guarantee that
+for an exception this service did not raise itself is never to put its text in
+the response. Detail belongs in logs, keyed by correlation id.
+
+Classification follows contract v1.9 section 21 and its approved addendum
+(section 21.9): the Backend keys retries on **HTTP status + code**, and
+``retryable`` must agree with that classification rather than contradict it.
+
+- Every 5xx is retryable **except** ``502 AI_INVALID_RESPONSE``, which is
+  always non-retryable: malformed model output is a contract failure, not a
+  transient one.
+- ``429 RATE_LIMITED`` is retryable, with a bounded ``Retry-After`` when the
+  upstream provider supplied one.
+- 4xx is non-retryable.
 
 This module imports nothing from the domain layers, so it stays usable from
 anywhere. The translation from a domain exception to a code lives at the
@@ -28,13 +37,8 @@ __all__ = [
     "AiServiceError",
 ]
 
-#: HTTP status per code, following doc 03 Phase 15. That table is an
-#: implementation recommendation rather than a locked contract; the JSON
-#: structure is what is locked.
-#:
-#: ``CHUNKING_FAILED`` has no row in the source table. It is mapped to 500:
-#: chunking is deterministic local work, so a failure is a service defect
-#: rather than a transient dependency problem.
+#: HTTP status per code. The JSON structure is what is locked; the statuses
+#: follow contract section 21: 502 is reserved for ``AI_INVALID_RESPONSE``.
 ERROR_HTTP_STATUS: MappingProxyType[ErrorCode, int] = MappingProxyType(
     {
         ErrorCode.INVALID_INPUT: 422,
@@ -45,31 +49,40 @@ ERROR_HTTP_STATUS: MappingProxyType[ErrorCode, int] = MappingProxyType(
         ErrorCode.MODEL_UNAVAILABLE: 503,
         ErrorCode.TIMEOUT: 504,
         ErrorCode.INTERNAL_ERROR: 500,
+        ErrorCode.GENERATION_UNAVAILABLE: 503,
+        ErrorCode.RATE_LIMITED: 429,
+        ErrorCode.AI_INVALID_RESPONSE: 502,
     }
 )
 
-#: Whether the Backend should retry. A code is retryable only when repeating
-#: the identical request could plausibly succeed.
+#: Whether the Backend will retry. Consistent with the status, never an
+#: override of it (contract section 21.9).
 #:
-#: ``CHUNKING_FAILED`` is not retryable: chunking is deterministic, so the
-#: same input fails the same way. ``INTERNAL_ERROR`` is not retryable either
-#: -- it covers defects, including a misconfigured user pre-filter, and
-#: retrying that would return the same wrong rows again.
+#: ``INTERNAL_ERROR`` and ``CHUNKING_FAILED`` are 500s and therefore
+#: retryable under the canonical 5xx rule, bounded by the Backend's three
+#: total attempts. The earlier "deterministic, so never retry" metadata
+#: contradicted that classification and was reviewed away with the addendum.
+#: A defect still fails every attempt -- the retry is cheap and finite, and
+#: a leaking user pre-filter raises rather than returning rows, so a retry
+#: cannot expose anything either.
 ERROR_RETRYABLE: MappingProxyType[ErrorCode, bool] = MappingProxyType(
     {
         ErrorCode.INVALID_INPUT: False,
         ErrorCode.INVALID_REQUEST: False,
         ErrorCode.EMBEDDING_FAILED: True,
-        ErrorCode.CHUNKING_FAILED: False,
+        ErrorCode.CHUNKING_FAILED: True,
         ErrorCode.VECTOR_SEARCH_FAILED: True,
         ErrorCode.MODEL_UNAVAILABLE: True,
         ErrorCode.TIMEOUT: True,
-        ErrorCode.INTERNAL_ERROR: False,
+        ErrorCode.INTERNAL_ERROR: True,
+        ErrorCode.GENERATION_UNAVAILABLE: True,
+        ErrorCode.RATE_LIMITED: True,
+        ErrorCode.AI_INVALID_RESPONSE: False,
     }
 )
 
 #: The public message per code. Safe by construction: no identifiers, no user
-#: content, no infrastructure detail.
+#: content, no infrastructure detail, no provider detail.
 ERROR_MESSAGE: MappingProxyType[ErrorCode, str] = MappingProxyType(
     {
         ErrorCode.INVALID_INPUT: "Request input failed validation",
@@ -80,6 +93,9 @@ ERROR_MESSAGE: MappingProxyType[ErrorCode, str] = MappingProxyType(
         ErrorCode.MODEL_UNAVAILABLE: "Embedding model is temporarily unavailable",
         ErrorCode.TIMEOUT: "The request timed out",
         ErrorCode.INTERNAL_ERROR: "An internal error occurred",
+        ErrorCode.GENERATION_UNAVAILABLE: "Answer generation is temporarily unavailable",
+        ErrorCode.RATE_LIMITED: "The generation provider is rate limited",
+        ErrorCode.AI_INVALID_RESPONSE: "The generated output was invalid",
     }
 )
 
@@ -89,9 +105,13 @@ class AiServiceError(Exception):
 
     Raise this where the correct public code is known at the raise site.
     Anything else is classified at the transport boundary.
+
+    ``retry_after_seconds`` is only meaningful for ``RATE_LIMITED``; the
+    transport layer emits it as a ``Retry-After`` header, already bounded by
+    the caller.
     """
 
-    __slots__ = ("code", "public_message", "retryable")
+    __slots__ = ("code", "public_message", "retry_after_seconds", "retryable")
 
     def __init__(
         self,
@@ -99,10 +119,12 @@ class AiServiceError(Exception):
         *,
         message: str | None = None,
         retryable: bool | None = None,
+        retry_after_seconds: int | None = None,
     ) -> None:
         self.code = code
         self.public_message = message if message is not None else ERROR_MESSAGE[code]
         self.retryable = retryable if retryable is not None else ERROR_RETRYABLE[code]
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(self.public_message)
 
     @property

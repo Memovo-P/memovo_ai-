@@ -28,7 +28,7 @@ from memovo_ai.embeddings.base import EmbeddingProvider
 from memovo_ai.embeddings.models import Embedding
 from memovo_ai.evaluation.metrics import QueryOutcome, RetrievalMetrics, summarize
 from memovo_ai.providers.vector_search.fake import FakeVectorSearchProvider, VectorRecord
-from memovo_ai.schemas.process import ProcessMemoryRequest
+from memovo_ai.schemas.process import ProcessMemoryRequest, ProcessMemoryRequestAdapter
 from memovo_ai.schemas.search import SearchMemoryRequest, SearchMemorySuccessResponse
 from memovo_ai.services.memory_processor import MemoryProcessorService
 from memovo_ai.services.memory_search import MemorySearchService
@@ -95,7 +95,7 @@ def load_dataset(path: Path) -> Dataset:
 
     return Dataset(
         name=str(raw["name"]),
-        memories=tuple(ProcessMemoryRequest.model_validate(m) for m in raw["memories"]),
+        memories=tuple(ProcessMemoryRequestAdapter.validate_python(m) for m in raw["memories"]),
         cases=tuple(
             EvaluationCase(
                 query_id=str(q["id"]),
@@ -124,7 +124,7 @@ async def index_memories(
                 chunk_index=chunk.chunk_index,
                 content=chunk.content,
                 title=memory.title,
-                tags=tuple(memory.tags),
+                tags=tuple(memory.tags or ()),
                 embedding=tuple(chunk.embedding),
             )
             for chunk in response.chunks

@@ -73,9 +73,14 @@ COPY --from=builder --chown=memovo:memovo /app/.venv /app/.venv
 USER memovo
 
 # Bake the weights. Startup then loads from disk: deterministic, offline, and
-# identical on every replica. Set --build-arg BAKE_MODEL=false for a thin
-# image that downloads on first start -- acceptable for local work, not for
-# production, where a Hugging Face outage would become a failed rollout.
+# identical on every replica.
+#
+# --build-arg BAKE_MODEL=false produces a thin image with no weights. That
+# image does **not** fetch them at runtime: HF_HUB_OFFLINE=1 above forbids
+# it, so the model load fails and the service starts unready. It is useful
+# for testing that the image builds and boots, not for serving. To actually
+# run without baked weights, a caller must override HF_HUB_OFFLINE=0 at run
+# time and accept a download on first start.
 ARG BAKE_MODEL=true
 ARG MEMOVO_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 RUN if [ "$BAKE_MODEL" = "true" ]; then \

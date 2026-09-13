@@ -1,21 +1,34 @@
-"""Validation behaviour for the ``/ai/memories/process`` schemas."""
+"""Validation behaviour for the ``/ai/memories/process`` schemas.
+
+Every limit asserted here is copied from contract v1.9, section 8.1 (Note)
+and section 9 (response). None is invented; where the contract sets no limit
+-- ``memoryId`` above all -- none is asserted. Link-specific rules live in
+``test_link_schemas.py``.
+"""
 
 import pytest
 from pydantic import ValidationError
 
-from memovo_ai.schemas import ProcessedChunk, ProcessMemoryRequest, ProcessMemoryResponse
+from memovo_ai.schemas import (
+    LinkProcessRequest,
+    NoteProcessRequest,
+    ProcessedChunk,
+    ProcessMemoryRequestAdapter,
+    ProcessMemoryResponse,
+)
 
 pytestmark = pytest.mark.unit
 
-VALID_REQUEST = {
-    "memoryId": "memory_456",
-    "title": "MongoDB Vector Search",
-    "description": "How Atlas Vector Search works...",
-    "whySaved": "Useful for the memory project",
-    "tags": ["mongodb", "vector-search", "ai"],
+#: Contract section 8.1, verbatim.
+NOTE: dict[str, object] = {
+    "type": "note",
+    "memoryId": "67890abcdef1234567890abc",
+    "title": "MongoDB Performance Tips",
+    "content": "Use indexes for frequently queried fields...",
+    "tags": ["database", "performance"],
 }
 
-VALID_CHUNK = {
+VALID_CHUNK: dict[str, object] = {
     "chunkId": "chunk_001",
     "chunkIndex": 0,
     "content": "MongoDB Vector Search...",
@@ -23,99 +36,189 @@ VALID_CHUNK = {
 }
 
 
-# --------------------------------------------------------------------------
-# ProcessMemoryRequest
-# --------------------------------------------------------------------------
-def test_valid_request_is_accepted() -> None:
-    request = ProcessMemoryRequest.model_validate(VALID_REQUEST)
-
-    assert request.memory_id == "memory_456"
-    assert request.why_saved == "Useful for the memory project"
-    assert request.tags == ["mongodb", "vector-search", "ai"]
+def validate(payload: dict[str, object]) -> NoteProcessRequest | LinkProcessRequest:
+    return ProcessMemoryRequestAdapter.validate_python(payload)
 
 
-@pytest.mark.parametrize("field", ["memoryId", "title", "description", "whySaved", "tags"])
-def test_missing_required_field_is_rejected(field: str) -> None:
-    payload = {k: v for k, v in VALID_REQUEST.items() if k != field}
-
+def rejected(payload: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        ProcessMemoryRequest.model_validate(payload)
+        validate(payload)
 
 
-def test_extra_field_is_rejected() -> None:
-    with pytest.raises(ValidationError):
-        ProcessMemoryRequest.model_validate({**VALID_REQUEST, "unexpected": "value"})
+# --------------------------------------------------------------------------
+# The documented Note
+# --------------------------------------------------------------------------
+def test_the_documented_note_is_accepted() -> None:
+    request = validate(NOTE)
+
+    assert isinstance(request, NoteProcessRequest)
+    assert request.memory_type == "note"
+    assert request.memory_id == "67890abcdef1234567890abc"
+    assert request.title == "MongoDB Performance Tips"
+    assert request.content == "Use indexes for frequently queried fields..."
+    assert request.tags == ["database", "performance"]
 
 
+@pytest.mark.parametrize("field", ["type", "memoryId", "title", "content"])
+def test_a_missing_required_field_is_rejected(field: str) -> None:
+    rejected({key: value for key, value in NOTE.items() if key != field})
+
+
+@pytest.mark.parametrize("field", ["memoryId", "title", "content"])
+def test_a_null_required_field_is_rejected(field: str) -> None:
+    """Required and not nullable (section 8.1)."""
+    rejected({**NOTE, field: None})
+
+
+# --------------------------------------------------------------------------
+# The discriminator
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("memory_type", ["Note", "NOTE", "memo", "", None, 1, True])
+def test_an_unknown_type_is_rejected(memory_type: object) -> None:
+    """Only the two literal values; no case folding and no coercion."""
+    rejected({**NOTE, "type": memory_type})
+
+
+def test_the_type_selects_the_shape() -> None:
+    assert isinstance(validate(NOTE), NoteProcessRequest)
+    assert not isinstance(validate(NOTE), LinkProcessRequest)
+
+
+# --------------------------------------------------------------------------
+# title: 0-200 characters
+# --------------------------------------------------------------------------
+def test_an_empty_title_is_accepted() -> None:
+    assert validate({**NOTE, "title": ""}).title == ""
+
+
+def test_a_two_hundred_character_title_is_accepted() -> None:
+    assert len(validate({**NOTE, "title": "t" * 200}).title) == 200
+
+
+def test_a_two_hundred_and_one_character_title_is_rejected() -> None:
+    rejected({**NOTE, "title": "t" * 201})
+
+
+# --------------------------------------------------------------------------
+# content: 1-10,000 characters
+# --------------------------------------------------------------------------
+def test_empty_content_is_rejected() -> None:
+    rejected({**NOTE, "content": ""})
+
+
+def test_one_character_content_is_accepted() -> None:
+    assert validate({**NOTE, "content": "x"}).content == "x"
+
+
+def test_ten_thousand_character_content_is_accepted() -> None:
+    assert len(validate({**NOTE, "content": "c" * 10_000}).content) == 10_000
+
+
+def test_ten_thousand_and_one_character_content_is_rejected() -> None:
+    rejected({**NOTE, "content": "c" * 10_001})
+
+
+# --------------------------------------------------------------------------
+# tags: optional, nullable, at most 20 of at most 50 characters
+# --------------------------------------------------------------------------
+def test_absent_tags_are_none() -> None:
+    assert validate({key: value for key, value in NOTE.items() if key != "tags"}).tags is None
+
+
+def test_null_tags_are_accepted() -> None:
+    assert validate({**NOTE, "tags": None}).tags is None
+
+
+def test_empty_tags_are_accepted() -> None:
+    assert validate({**NOTE, "tags": []}).tags == []
+
+
+def test_twenty_tags_are_accepted() -> None:
+    assert len(validate({**NOTE, "tags": [f"t{n}" for n in range(20)]}).tags or []) == 20
+
+
+def test_twenty_one_tags_are_rejected() -> None:
+    rejected({**NOTE, "tags": [f"t{n}" for n in range(21)]})
+
+
+def test_a_fifty_character_tag_is_accepted() -> None:
+    assert validate({**NOTE, "tags": ["t" * 50]}).tags == ["t" * 50]
+
+
+def test_a_fifty_one_character_tag_is_rejected() -> None:
+    rejected({**NOTE, "tags": ["t" * 51]})
+
+
+@pytest.mark.parametrize("tags", ["database", [1, 2], [None], [["nested"]]])
+def test_tags_must_be_a_list_of_strings(tags: object) -> None:
+    rejected({**NOTE, "tags": tags})
+
+
+# --------------------------------------------------------------------------
+# memoryId: non-empty, and otherwise unconstrained
+# --------------------------------------------------------------------------
+def test_an_empty_memory_id_is_rejected() -> None:
+    rejected({**NOTE, "memoryId": ""})
+
+
+def test_memory_id_has_no_invented_upper_bound() -> None:
+    """The contract sets no length; the log field truncates instead."""
+    assert len(validate({**NOTE, "memoryId": "m" * 5000}).memory_id) == 5000
+
+
+def test_a_non_string_memory_id_is_rejected() -> None:
+    rejected({**NOTE, "memoryId": 456})
+
+
+# --------------------------------------------------------------------------
+# Nothing else is accepted
+# --------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "field",
-    ["userId", "embeddingVersion", "createdAt", "updatedAt", "jobId"],
+    ["whySaved", "description", "about", "userId", "jobId", "embeddingVersion", "createdAt"],
 )
-def test_out_of_scope_fields_are_rejected(field: str) -> None:
-    """Sprint 1 requests carry none of these.
-
-    ``about`` and ``source`` were on this list until Phase 17; they are now
-    part of the Link contract and are covered by their own tests.
-    """
-    with pytest.raises(ValidationError):
-        ProcessMemoryRequest.model_validate({**VALID_REQUEST, field: "x"})
+def test_legacy_and_out_of_scope_fields_are_rejected(field: str) -> None:
+    """``whySaved`` is permanently removed (section 8.5); the rest never
+    belonged to the request."""
+    rejected({**NOTE, field: "x"})
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("memoryId", 456),
-        ("title", 1),
-        ("description", None),
-        ("whySaved", ["a"]),
-        ("tags", "mongodb"),
-        ("tags", [1, 2]),
+        ("url", "https://example.com"),
+        ("extractedContent", "page text"),
+        (
+            "source",
+            {
+                "sourceTitle": None,
+                "sourceDescription": None,
+                "authorName": None,
+                "publicationDate": None,
+            },
+        ),
     ],
 )
-def test_wrong_type_is_rejected(field: str, value: object) -> None:
-    with pytest.raises(ValidationError):
-        ProcessMemoryRequest.model_validate({**VALID_REQUEST, field: value})
+def test_link_only_fields_are_rejected_on_a_note(field: str, value: object) -> None:
+    rejected({**NOTE, field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("memoryId", 456), ("title", 1), ("content", ["a"]), ("tags", "database")],
+)
+def test_a_wrong_type_is_rejected(field: str, value: object) -> None:
+    rejected({**NOTE, field: value})
 
 
 def test_snake_case_input_is_rejected() -> None:
     """The public contract is camelCase; snake_case must not be silently accepted."""
-    payload = {
-        "memory_id": "memory_456",
-        "title": "t",
-        "description": "d",
-        "why_saved": "w",
-        "tags": [],
-    }
-
-    with pytest.raises(ValidationError):
-        ProcessMemoryRequest.model_validate(payload)
+    rejected({"type": "note", "memory_id": "m", "title": "t", "content": "c"})
 
 
-def test_empty_tags_list_is_accepted() -> None:
-    """`tags` is required but may be empty (doc 05 lists empty tags as an input case)."""
-    request = ProcessMemoryRequest.model_validate({**VALID_REQUEST, "tags": []})
-
-    assert request.tags == []
-
-
-def test_blank_strings_are_accepted() -> None:
-    """No source document defines blank-string rejection, so the schema stays permissive."""
-    request = ProcessMemoryRequest.model_validate(
-        {**VALID_REQUEST, "description": "", "whySaved": ""}
-    )
-
-    assert request.description == ""
-    assert request.why_saved == ""
-
-
-@pytest.mark.parametrize(
-    "title",
-    ["بحث المتجهات في مونجو", "MongoDB بحث", "Ünïcodé ✅ 検索"],
-)
+@pytest.mark.parametrize("title", ["بحث المتجهات في مونجو", "MongoDB بحث", "Ünïcodé ✅ 検索"])
 def test_unicode_and_arabic_content_is_accepted(title: str) -> None:
-    request = ProcessMemoryRequest.model_validate({**VALID_REQUEST, "title": title})
-
-    assert request.title == title
+    assert validate({**NOTE, "title": title}).title == title
 
 
 # --------------------------------------------------------------------------
@@ -160,7 +263,7 @@ def test_non_numeric_embedding_is_rejected(embedding: object) -> None:
 
 
 def test_embedding_dimension_is_not_enforced_by_the_transport_schema() -> None:
-    """Dimension 1024 is validated at the embedding provider boundary (Phase 05).
+    """Dimension 1024 is validated at the embedding provider boundary.
 
     Enforcing it here would duplicate that check in the wrong layer and would
     make the transport schema depend on a model decision.
@@ -171,35 +274,35 @@ def test_embedding_dimension_is_not_enforced_by_the_transport_schema() -> None:
 
 
 # --------------------------------------------------------------------------
-# ProcessMemoryResponse
+# ProcessMemoryResponse: memoryId + the complete chunk set (section 9)
 # --------------------------------------------------------------------------
 def test_valid_response_is_accepted() -> None:
     response = ProcessMemoryResponse.model_validate(
-        {
-            "intent": "save_memory",
-            "content": "How MongoDB Vector Search works...",
-            "chunks": [VALID_CHUNK],
-        }
+        {"memoryId": "memory-id", "chunks": [VALID_CHUNK]}
     )
 
-    assert response.intent == "save_memory"
+    assert response.memory_id == "memory-id"
     assert len(response.chunks) == 1
 
 
-def test_intent_defaults_to_save_memory() -> None:
-    response = ProcessMemoryResponse.model_validate({"content": "c", "chunks": []})
-
-    assert response.intent == "save_memory"
+def test_an_empty_chunk_set_is_a_valid_response() -> None:
+    assert ProcessMemoryResponse.model_validate({"memoryId": "m", "chunks": []}).chunks == []
 
 
-@pytest.mark.parametrize("intent", ["search_memory", "create_note", "general_chat", "", None, 1])
-def test_unsupported_intent_is_rejected(intent: object) -> None:
+def test_a_missing_memory_id_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        ProcessMemoryResponse.model_validate({"intent": intent, "content": "c", "chunks": []})
+        ProcessMemoryResponse.model_validate({"chunks": []})
 
 
-def test_extra_response_field_is_rejected() -> None:
+def test_an_empty_memory_id_is_rejected_on_the_response() -> None:
     with pytest.raises(ValidationError):
-        ProcessMemoryResponse.model_validate(
-            {"content": "c", "chunks": [], "embeddingVersion": "v1"}
-        )
+        ProcessMemoryResponse.model_validate({"memoryId": "", "chunks": []})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("intent", "save_memory"), ("content", "c"), ("embeddingVersion", "v1")]
+)
+def test_legacy_and_extra_response_fields_are_rejected(field: str, value: object) -> None:
+    """``intent`` and top-level ``content`` were the pre-v1.9 response."""
+    with pytest.raises(ValidationError):
+        ProcessMemoryResponse.model_validate({"memoryId": "m", "chunks": [], field: value})

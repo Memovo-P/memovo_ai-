@@ -32,8 +32,8 @@ def settings(**overrides: object) -> AtlasSettings:
     base: dict[str, object] = {
         "uri": "mongodb+srv://user:pw@cluster.example/",
         "database": "memovo",
-        "collection": "memory_chunks",
-        "index": "memory_chunks_vector_index",
+        "collection": "memory_vectors",
+        "index": "vector_index",
         "path": "embedding",
     }
     return AtlasSettings(_env_file=None, **{**base, **overrides})  # type: ignore[arg-type]
@@ -155,7 +155,7 @@ def test_the_pipeline_targets_the_configured_index_and_path() -> None:
     )
     stage = pipeline[0]["$vectorSearch"]
 
-    assert stage["index"] == "memory_chunks_vector_index"
+    assert stage["index"] == "vector_index"
     assert stage["path"] == "embedding"
     assert stage["queryVector"] == QUERY
 

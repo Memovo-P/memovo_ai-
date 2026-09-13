@@ -6,6 +6,11 @@ service unset, and requests then fail with a clear unavailable state rather
 than the application refusing to start (doc 06, section 9). That also lets the
 API be exercised without model weights present.
 
+An invalid *configuration* is the exception to that tolerance. A missing model
+or an unreachable cluster may recover on its own; a wrong setting will not,
+and a service that keeps answering with one is more dangerous than one that
+refuses to start. Those raise and startup fails.
+
 This service is internal. It must not be exposed publicly (doc 06, section 7);
 the Backend is the only caller.
 """
@@ -20,7 +25,8 @@ from memovo_ai.api.dependencies import Services, build_services
 from memovo_ai.api.errors import register_exception_handlers
 from memovo_ai.api.middleware import RequestContextMiddleware
 from memovo_ai.api.router import api_router
-from memovo_ai.core.logging import configure_logging, log_event
+from memovo_ai.core.config import GenerationSettings, InvalidConfigurationError, ProviderSettings
+from memovo_ai.core.logging import configure_logging, log_event, safe_text
 from memovo_ai.core.readiness import ReadinessState, set_readiness
 from memovo_ai.embeddings.models import EmbeddingError
 from memovo_ai.providers.vector_search.base import VectorSearchUnavailableError
@@ -48,9 +54,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     skip = getattr(app.state, _SKIP_STARTUP_SERVICES, False)
     set_readiness(app.state, ReadinessState.LOADING)
 
+    # The configured name, read here rather than taken from the built
+    # services: an operator needs it in the log even when startup failed, and
+    # it is what tells them whether a deployment is pointed at a real index.
+    vector_provider = safe_text(ProviderSettings().vector_provider)
+    generation = GenerationSettings()
+    generation_provider = safe_text(generation.provider) if generation.enabled else "disabled"
+
     services: Services | None
     try:
         services = None if skip else build_services()
+    except InvalidConfigurationError as error:
+        # Not tolerated. A missing model or an unreachable cluster can fix
+        # itself, so those start unready and say so; a wrong setting cannot,
+        # and a process that keeps serving with one is worse than one that
+        # refuses to start. Re-raised, so startup fails and /ready is never
+        # reachable, let alone 200.
+        set_readiness(app.state, ReadinessState.UNAVAILABLE)
+        log_event(
+            _logger,
+            "service.startup_rejected",
+            level=logging.CRITICAL,
+            error_type=type(error).__name__,
+            vector_provider=vector_provider,
+        )
+        raise
     except (EmbeddingError, VectorSearchUnavailableError, ValueError) as error:
         # Startup continues in an unavailable state. The dependencies raise
         # ModelUnavailableError per request, which Phase 15 maps to a
@@ -75,6 +103,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.memory_search_service = services.memory_search if services else None
     app.state.memory_processor_service = services.memory_processor if services else None
+    app.state.generation_provider = services.generation if services else None
+    app.state.memory_chat_service = services.memory_chat if services else None
+    app.state.note_preparation_service = services.note_preparation if services else None
 
     # Readiness follows the services, not the process. Without usable
     # services the process stays alive and answers probes, but must be kept
@@ -84,7 +115,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ReadinessState.READY if services is not None else ReadinessState.UNAVAILABLE,
     )
 
-    log_event(_logger, "service.started", services_available=services is not None)
+    log_event(
+        _logger,
+        "service.started",
+        services_available=services is not None,
+        vector_provider=vector_provider,
+        generation_enabled=generation.enabled,
+        generation_provider=generation_provider,
+        generation_available=services is not None and services.generation is not None,
+    )
 
     yield
 
@@ -93,6 +132,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     set_readiness(app.state, ReadinessState.UNAVAILABLE)
     app.state.memory_search_service = None
     app.state.memory_processor_service = None
+    app.state.generation_provider = None
+    app.state.memory_chat_service = None
+    app.state.note_preparation_service = None
     if services is not None:
         await services.aclose()
 

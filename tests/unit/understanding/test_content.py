@@ -1,4 +1,4 @@
-"""Behaviour of canonical content composition."""
+"""Behaviour of canonical content composition (Note sections)."""
 
 import unicodedata
 
@@ -13,20 +13,15 @@ pytestmark = pytest.mark.unit
 
 MEMORY = {
     "title": "MongoDB Vector Search",
-    "description": "How Atlas Vector Search works...",
-    "why_saved": "Useful for the memory project",
+    "content": "How Atlas Vector Search works...",
     "tags": ["mongodb", "vector-search", "ai"],
 }
 
-#: Copied from 03_IMPLEMENTATION_PLAN.md, Phase 02.
 DOCUMENTED_REPRESENTATION = """Title:
 MongoDB Vector Search
 
 Content:
 How Atlas Vector Search works...
-
-Why Saved:
-Useful for the memory project
 
 Tags:
 mongodb, vector-search, ai"""
@@ -41,24 +36,26 @@ def test_matches_the_documented_representation() -> None:
 
 def test_sections_appear_in_the_locked_order() -> None:
     composed = compose_canonical_content(**MEMORY)
-    positions = [
-        composed.index("Title:"),
-        composed.index("Content:"),
-        composed.index("Why Saved:"),
-        composed.index("Tags:"),
-    ]
+    positions = [composed.index("Title:"), composed.index("Content:"), composed.index("Tags:")]
 
     assert positions == sorted(positions)
 
 
 def test_every_embedding_input_field_is_present() -> None:
-    """Embedding input = Title + Content + WhySaved + Tags (doc 01, decisions 1-2)."""
+    """Embedding input for a Note = title + content + tags (contract 8.4)."""
     composed = compose_canonical_content(**MEMORY)
 
     assert "MongoDB Vector Search" in composed
     assert "How Atlas Vector Search works..." in composed
-    assert "Useful for the memory project" in composed
     assert "mongodb, vector-search, ai" in composed
+
+
+def test_why_saved_is_gone_for_good() -> None:
+    """Contract section 8.5: removed, not renamed and not mapped."""
+    composed = compose_canonical_content(**MEMORY)
+
+    assert "Why Saved" not in composed
+    assert "About:" not in composed
 
 
 def test_output_has_no_trailing_newline() -> None:
@@ -68,7 +65,7 @@ def test_output_has_no_trailing_newline() -> None:
 
 
 def test_sections_are_separated_by_one_blank_line() -> None:
-    assert compose_canonical_content(**MEMORY).count("\n\n") == 3
+    assert compose_canonical_content(**MEMORY).count("\n\n") == 2
 
 
 # --------------------------------------------------------------------------
@@ -85,15 +82,14 @@ def test_changed_input_changes_the_output() -> None:
     baseline = compose_canonical_content(**MEMORY)
 
     assert compose_canonical_content(**{**MEMORY, "title": "Something else"}) != baseline
-    assert compose_canonical_content(**{**MEMORY, "description": "Other"}) != baseline
-    assert compose_canonical_content(**{**MEMORY, "why_saved": "Other"}) != baseline
+    assert compose_canonical_content(**{**MEMORY, "content": "Other"}) != baseline
     assert compose_canonical_content(**{**MEMORY, "tags": ["other"]}) != baseline
 
 
 def test_composition_is_idempotent_under_renormalization() -> None:
     """Feeding normalized text back in must not change it further."""
-    once = compose_canonical_content(title="  A  \r\n B  ", description="", why_saved="", tags=[])
-    twice = compose_canonical_content(title=once, description="", why_saved="", tags=[])
+    once = compose_canonical_content(title="  A  \r\n B  ", content="", tags=[])
+    twice = compose_canonical_content(title=once, content="", tags=[])
 
     assert twice == f"Title:\n{once}"
 
@@ -104,8 +100,8 @@ def test_composition_is_idempotent_under_renormalization() -> None:
 @pytest.mark.parametrize("newline", ["\r\n", "\r", "\n"])
 def test_line_endings_are_normalized(newline: str) -> None:
     """The same Memory must not chunk differently by submitting platform."""
-    description = f"First paragraph.{newline}{newline}Second paragraph."
-    composed = compose_canonical_content(**{**MEMORY, "description": description})
+    content = f"First paragraph.{newline}{newline}Second paragraph."
+    composed = compose_canonical_content(**{**MEMORY, "content": content})
 
     assert "\r" not in composed
     assert "First paragraph.\n\nSecond paragraph." in composed
@@ -119,22 +115,22 @@ def test_leading_and_trailing_whitespace_is_stripped() -> None:
 
 def test_whitespace_only_lines_become_truly_blank() -> None:
     """The chunker splits on paragraph boundaries, so "\\n   \\n" must equal "\\n\\n"."""
-    spaced = compose_canonical_content(**{**MEMORY, "description": "One.\n   \nTwo."})
-    clean = compose_canonical_content(**{**MEMORY, "description": "One.\n\nTwo."})
+    spaced = compose_canonical_content(**{**MEMORY, "content": "One.\n   \nTwo."})
+    clean = compose_canonical_content(**{**MEMORY, "content": "One.\n\nTwo."})
 
     assert spaced == clean
 
 
 def test_interior_structure_is_preserved() -> None:
     """Paragraph breaks and indentation carry structure the chunker needs."""
-    description = "# Heading\n\nParagraph one.\n\n    indented block\n\nParagraph two."
-    composed = compose_canonical_content(**{**MEMORY, "description": description})
+    content = "# Heading\n\nParagraph one.\n\n    indented block\n\nParagraph two."
+    composed = compose_canonical_content(**{**MEMORY, "content": content})
 
-    assert description in composed
+    assert content in composed
 
 
 def test_interior_blank_lines_are_not_collapsed() -> None:
-    composed = compose_canonical_content(**{**MEMORY, "description": "A\n\n\n\nB"})
+    composed = compose_canonical_content(**{**MEMORY, "content": "A\n\n\n\nB"})
 
     assert "A\n\n\n\nB" in composed
 
@@ -142,25 +138,35 @@ def test_interior_blank_lines_are_not_collapsed() -> None:
 # --------------------------------------------------------------------------
 # Empty and optional field handling
 # --------------------------------------------------------------------------
-def test_empty_why_saved_omits_the_section() -> None:
-    composed = compose_canonical_content(**{**MEMORY, "why_saved": ""})
-
-    assert "Why Saved:" not in composed
-    assert "Title:" in composed
-    assert "Tags:" in composed
-
-
 def test_empty_tags_omit_the_section() -> None:
     composed = compose_canonical_content(**{**MEMORY, "tags": []})
 
     assert "Tags:" not in composed
-    assert composed.endswith("Useful for the memory project")
+    assert composed.endswith("How Atlas Vector Search works...")
 
 
-def test_empty_description_omits_the_section() -> None:
-    composed = compose_canonical_content(**{**MEMORY, "description": ""})
+def test_null_tags_omit_the_section() -> None:
+    assert compose_canonical_content(**{**MEMORY, "tags": None}) == compose_canonical_content(
+        **{**MEMORY, "tags": []}
+    )
+
+
+def test_absent_tags_omit_the_section() -> None:
+    assert "Tags:" not in compose_canonical_content(title="t", content="c")
+
+
+def test_empty_content_omits_the_section() -> None:
+    composed = compose_canonical_content(**{**MEMORY, "content": ""})
 
     assert "Content:" not in composed
+
+
+def test_null_content_omits_the_section_and_renders_no_literal() -> None:
+    composed = compose_canonical_content(**{**MEMORY, "content": None})
+
+    assert "Content:" not in composed
+    assert "None" not in composed
+    assert "null" not in composed
 
 
 def test_empty_title_omits_the_section() -> None:
@@ -171,24 +177,24 @@ def test_empty_title_omits_the_section() -> None:
 
 
 def test_whitespace_only_value_counts_as_empty() -> None:
-    composed = compose_canonical_content(**{**MEMORY, "why_saved": "   \n\t  "})
+    composed = compose_canonical_content(**{**MEMORY, "content": "   \n\t  "})
 
-    assert "Why Saved:" not in composed
+    assert "Content:" not in composed
 
 
 def test_all_fields_empty_yields_empty_string() -> None:
     """Whether this is a request error belongs to the service and error contract."""
-    assert compose_canonical_content(title="", description="", why_saved="", tags=[]) == ""
+    assert compose_canonical_content(title="", content="", tags=[]) == ""
 
 
 def test_omitted_section_leaves_no_double_separator() -> None:
-    composed = compose_canonical_content(**{**MEMORY, "why_saved": ""})
+    composed = compose_canonical_content(**{**MEMORY, "content": ""})
 
     assert "\n\n\n" not in composed
 
 
 def test_only_one_populated_field_produces_one_section() -> None:
-    composed = compose_canonical_content(title="Solo", description="", why_saved="", tags=[])
+    composed = compose_canonical_content(title="Solo", content="", tags=[])
 
     assert composed == "Title:\nSolo"
 
@@ -246,27 +252,24 @@ def test_a_tuple_of_tags_is_accepted() -> None:
 def test_arabic_content_is_preserved() -> None:
     composed = compose_canonical_content(
         title="بحث المتجهات",
-        description="كيف يعمل البحث الدلالي في مونجو دي بي",
-        why_saved="مفيد لمشروع الذاكرة",
+        content="كيف يعمل البحث الدلالي في مونجو دي بي",
         tags=["مونجو", "ذكاء-اصطناعي"],
     )
 
     assert "بحث المتجهات" in composed
     assert "كيف يعمل البحث الدلالي في مونجو دي بي" in composed
-    assert "مفيد لمشروع الذاكرة" in composed
     assert composed.endswith("Tags:\nمونجو, ذكاء-اصطناعي")
 
 
 def test_mixed_arabic_and_english_is_preserved() -> None:
     composed = compose_canonical_content(
         title="MongoDB بحث المتجهات",
-        description="Atlas Vector Search يعمل عبر الفهارس",
-        why_saved="مفيد for the memory project",
+        content="Atlas Vector Search يعمل عبر الفهارس",
         tags=["mongodb", "مونجو"],
     )
 
     assert "MongoDB بحث المتجهات" in composed
-    assert "مفيد for the memory project" in composed
+    assert "Atlas Vector Search يعمل عبر الفهارس" in composed
 
 
 @pytest.mark.parametrize(
@@ -274,7 +277,7 @@ def test_mixed_arabic_and_english_is_preserved() -> None:
     ["Ünïcodé ✅", "日本語の検索", "emoji 🧠 memory", "math ∑ ≥ 0.75", "Ω≈ç√∫µ"],
 )
 def test_unicode_is_passed_through_unchanged(text: str) -> None:
-    composed = compose_canonical_content(title=text, description="d", why_saved="w", tags=[])
+    composed = compose_canonical_content(title=text, content="d", tags=[])
 
     assert composed.startswith(f"Title:\n{text}")
 
@@ -283,7 +286,7 @@ def test_unicode_is_not_normalized() -> None:
     """Composed vs precomposed forms are left as supplied.
 
     Applying NFC here would silently rewrite user text; no source document
-    asks for it. Flagged in the phase report as an open question.
+    asks for it.
     """
     precomposed = "é"
     decomposed = "é"
@@ -291,21 +294,22 @@ def test_unicode_is_not_normalized() -> None:
     assert unicodedata.normalize("NFC", decomposed) == precomposed
 
     assert compose_canonical_content(
-        title=precomposed, description="", why_saved="", tags=[]
-    ) != compose_canonical_content(title=decomposed, description="", why_saved="", tags=[])
+        title=precomposed, content="", tags=[]
+    ) != compose_canonical_content(title=decomposed, content="", tags=[])
 
 
 # --------------------------------------------------------------------------
 # Versioning
 # --------------------------------------------------------------------------
 def test_canonical_content_version_is_internal_only() -> None:
-    """Embedding version is not a Sprint 1 contract field (doc 01, decision 30)."""
+    """The v1.9 migration bumped the internal version; it is not a wire field."""
     from memovo_ai import schemas
 
-    assert CANONICAL_CONTENT_VERSION == 1
+    assert CANONICAL_CONTENT_VERSION == 2
 
     for model in (
-        schemas.ProcessMemoryRequest,
+        schemas.NoteProcessRequest,
+        schemas.LinkProcessRequest,
         schemas.ProcessMemoryResponse,
         schemas.ProcessedChunk,
         schemas.SearchMemoryRequest,

@@ -5,9 +5,13 @@ Every public failure serializes to exactly::
     {"error": {"code": ..., "message": ..., "retryable": ...}}
 
 Nothing else is exposed. Exception types, stack traces, model paths, provider
-names, connection strings and raw SDK errors must never reach these fields
-(doc 06, section 6). Mapping internal exceptions onto these codes, and onto
-HTTP status codes, is Phase 15.
+names, connection strings and raw SDK errors must never reach these fields.
+Mapping internal exceptions onto these codes, and onto HTTP status codes, is
+the transport layer's job (:mod:`memovo_ai.api.errors`).
+
+The Backend classifies a failure by **HTTP status + code**; ``retryable`` is
+consistent metadata, never an override (contract section 21 and its approved
+addendum, section 21.9).
 """
 
 from enum import StrEnum
@@ -31,6 +35,10 @@ class ErrorCode(StrEnum):
     MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
     TIMEOUT = "TIMEOUT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    # Generation (contract section 21 and the approved addendum, 21.9).
+    GENERATION_UNAVAILABLE = "GENERATION_UNAVAILABLE"
+    RATE_LIMITED = "RATE_LIMITED"
+    AI_INVALID_RESPONSE = "AI_INVALID_RESPONSE"
 
 
 class ErrorDetail(MemovoBaseModel):

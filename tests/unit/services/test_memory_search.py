@@ -18,7 +18,6 @@ from memovo_ai.providers.vector_search import (
 )
 from memovo_ai.retrieval import VectorSearchHit
 from memovo_ai.schemas import (
-    NO_MATCH_MESSAGE,
     SearchMemoryNoMatchResponse,
     SearchMemoryRequest,
     SearchMemorySuccessResponse,
@@ -167,7 +166,8 @@ async def test_results_carry_the_full_contract_payload() -> None:
     result = response.results[0]  # type: ignore[union-attr]
     assert result.title == "MongoDB Vector Search"
     assert result.tags == ["mongodb", "vector-search"]
-    assert [c.chunk_index for c in result.chunks] == [0, 1]
+    # Reading order is preserved even though chunkIndex is no longer on the wire.
+    assert [c.chunk_id for c in result.chunks] == ["memory_456_chunk_0", "memory_456_chunk_1"]
     assert result.chunks[0].content == "MongoDB Vector Search..."
 
 
@@ -281,7 +281,6 @@ async def test_no_relevant_chunk_returns_the_contract_no_match_response() -> Non
     assert isinstance(response, SearchMemoryNoMatchResponse)
     assert response.found is False
     assert response.results == []
-    assert response.message == NO_MATCH_MESSAGE
 
 
 async def test_an_empty_index_returns_no_match() -> None:
@@ -295,11 +294,7 @@ async def test_the_no_match_payload_matches_the_contract_exactly() -> None:
 
     response = await service.search(request())
 
-    assert json.loads(response.model_dump_json()) == {
-        "found": False,
-        "results": [],
-        "message": "I couldn't find a relevant memory",
-    }
+    assert json.loads(response.model_dump_json()) == {"found": False, "results": []}
 
 
 # --------------------------------------------------------------------------
@@ -377,7 +372,7 @@ async def test_the_response_uses_the_public_field_names() -> None:
 
     assert set(payload) == {"found", "results"}
     assert set(payload["results"][0]) == {"memoryId", "score", "title", "tags", "chunks"}
-    assert set(payload["results"][0]["chunks"][0]) == {"chunkId", "chunkIndex", "content"}
+    assert set(payload["results"][0]["chunks"][0]) == {"chunkId", "content"}
 
 
 # --------------------------------------------------------------------------

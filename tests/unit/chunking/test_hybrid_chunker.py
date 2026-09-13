@@ -485,8 +485,7 @@ def test_unicode_survives_chunking(text: str) -> None:
 def test_chunks_canonical_content_including_tags() -> None:
     canonical = compose_canonical_content(
         title="MongoDB Vector Search",
-        description="How Atlas Vector Search works.",
-        why_saved="Useful for the memory project",
+        content="How Atlas Vector Search works.",
         tags=["mongodb", "vector-search", "ai"],
     )
     chunks = make_chunker(target=500).chunk(canonical)
@@ -496,16 +495,14 @@ def test_chunks_canonical_content_including_tags() -> None:
 
 
 def test_canonical_content_with_empty_optional_values_still_chunks() -> None:
-    canonical = compose_canonical_content(
-        title="Just a title", description="", why_saved="", tags=[]
-    )
+    canonical = compose_canonical_content(title="Just a title", content="", tags=[])
     chunks = make_chunker().chunk(canonical)
 
     assert [chunk.content for chunk in chunks] == ["Title:\nJust a title"]
 
 
 def test_fully_empty_canonical_content_yields_no_chunks() -> None:
-    canonical = compose_canonical_content(title="", description="", why_saved="", tags=[])
+    canonical = compose_canonical_content(title="", content="", tags=[])
 
     assert make_chunker().chunk(canonical) == []
 
@@ -513,8 +510,7 @@ def test_fully_empty_canonical_content_yields_no_chunks() -> None:
 def test_long_canonical_content_splits_on_its_labels() -> None:
     canonical = compose_canonical_content(
         title="Vector search",
-        description=words(200),
-        why_saved="Because it matters",
+        content=words(200),
         tags=["a", "b"],
     )
     chunks = make_chunker(target=60, overlap=0).chunk(canonical)

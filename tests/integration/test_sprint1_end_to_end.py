@@ -36,18 +36,18 @@ OWNER = "user_123"
 INTRUDER = "user_999"
 
 MONGO_MEMORY: dict[str, object] = {
+    "type": "note",
     "memoryId": "memory_mongo",
     "title": "MongoDB Atlas Vector Search",
-    "description": "Atlas Vector Search indexes embeddings for similarity queries.",
-    "whySaved": "Useful for the memory project",
+    "content": "Atlas Vector Search indexes embeddings for similarity queries.",
     "tags": ["mongodb", "vector-search"],
 }
 
 BREAD_MEMORY: dict[str, object] = {
+    "type": "note",
     "memoryId": "memory_bread",
     "title": "Sourdough starter routine",
-    "description": "Feed the starter with flour and water every morning.",
-    "whySaved": "So the bread rises properly",
+    "content": "Feed the starter with flour and water every morning.",
     "tags": ["baking", "sourdough"],
 }
 
@@ -205,8 +205,7 @@ def test_an_unrelated_query_finds_nothing(indexed: list[VectorRecord]) -> None:
             SEARCH, json={"query": "quarterly tax filing deadlines", "userId": OWNER}
         ).json()
 
-        assert payload["found"] is False
-        assert payload["message"] == "I couldn't find a relevant memory"
+        assert payload == {"found": False, "results": []}
 
 
 def test_search_results_never_expose_embeddings(indexed: list[VectorRecord]) -> None:
@@ -220,7 +219,7 @@ def test_search_results_never_expose_embeddings(indexed: list[VectorRecord]) -> 
         for result in payload["results"]:
             assert "embedding" not in result
             for chunk in result["chunks"]:
-                assert set(chunk) == {"chunkId", "chunkIndex", "content"}
+                assert set(chunk) == {"chunkId", "content"}
 
 
 # --------------------------------------------------------------------------

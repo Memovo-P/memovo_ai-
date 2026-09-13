@@ -1,12 +1,12 @@
 """Canonical content composition.
 
 Turns the fields of a Memory into one stable block of text. That text is the
-single input to chunking (Phase 03) and, through the chunks, to embedding
-(Phase 06). Because ``chunkId`` is derived from final chunk content, any
-instability here would change chunk IDs on an unchanged Memory -- so this
-module is deliberately deterministic and total.
+single input to chunking and, through the chunks, to embedding. Because
+``chunkId`` is derived from final chunk content, any instability here would
+change chunk IDs on an unchanged Memory -- so this module is deliberately
+deterministic and total.
 
-The representation follows ``03_IMPLEMENTATION_PLAN.md``, Phase 02::
+The representation::
 
     Title:
     MongoDB Vector Search
@@ -14,53 +14,52 @@ The representation follows ``03_IMPLEMENTATION_PLAN.md``, Phase 02::
     Content:
     How Atlas Vector Search works...
 
-    Why Saved:
-    Useful for the memory project
-
     Tags:
     mongodb, vector-search, ai
 
-Embedding input is Title + Description/Content + WhySaved + Tags (doc 01,
-locked decisions 1 and 2), plus About and Source for a Link. Section order is
-fixed and never varies.
+A Link adds two sections between ``Content`` and ``Tags``: ``Source`` (the
+Backend-extracted metadata) and ``Extracted Content`` (the page text the
+Backend extracted). Section order is fixed and never varies.
 
-For a Link, the page content in ``description`` was extracted by the Backend.
+What is embedded follows contract v1.9 section 8.4: title, content, tags,
+source metadata and extracted content. ``whySaved`` is gone (section 8.5) and
+nothing stands in for it. The ``url`` is deliberately **not** part of the
+text: the contract lists it as context rather than semantic input, and a URL
+tokenizes into fragments that carry little meaning to a query. Adding it is a
+one-line, chunk-ID-changing decision and is pinned by tests either way.
+
 This module -- and this service -- never fetches anything.
 """
 
 from collections.abc import Sequence
 
 __all__ = [
-    "ABOUT_LABEL",
     "CANONICAL_CONTENT_VERSION",
     "CONTENT_LABEL",
+    "EXTRACTED_CONTENT_LABEL",
     "SECTION_SEPARATOR",
     "SOURCE_LABEL",
     "SOURCE_SEPARATOR",
     "TAGS_LABEL",
     "TAG_SEPARATOR",
     "TITLE_LABEL",
-    "WHY_SAVED_LABEL",
     "compose_canonical_content",
 ]
 
-#: Internal representation version. Bumping it changes canonical content and
-#: therefore every chunkId, so it exists to make a future migration explicit
-#: rather than silent. It is NOT part of the public API contract: embedding
-#: version is deferred and is not a Sprint 1 contract field (doc 01,
-#: locked decision 30).
-CANONICAL_CONTENT_VERSION = 1
+#: Internal representation version. Bumped to 2 by the contract v1.9
+#: migration: ``Why Saved`` and ``About`` no longer exist, ``Extracted
+#: Content`` does, and ``Source`` carries different fields. Existing chunk IDs
+#: for Links, and for Notes that had a ``whySaved``, therefore change; the
+#: Backend reprocesses and reconciles. It is NOT part of the public contract.
+CANONICAL_CONTENT_VERSION = 2
 
 TITLE_LABEL = "Title:"
-#: The request field is named ``description``; the canonical label is
-#: ``Content:``, matching the documented representation.
 CONTENT_LABEL = "Content:"
-WHY_SAVED_LABEL = "Why Saved:"
-TAGS_LABEL = "Tags:"
-#: Link context written by the user (doc 01, locked decision 28).
-ABOUT_LABEL = "About:"
-#: Link provenance the Backend extracted (doc 01, locked decision 29).
+#: Backend-extracted source metadata (contract section 8.3).
 SOURCE_LABEL = "Source:"
+#: Backend-extracted page text (contract section 8.4).
+EXTRACTED_CONTENT_LABEL = "Extracted Content:"
+TAGS_LABEL = "Tags:"
 
 TAG_SEPARATOR = ", "
 SOURCE_SEPARATOR = ", "
@@ -89,41 +88,38 @@ def _normalize_text(value: str) -> str:
     return without_trailing_spaces.strip()
 
 
-def _normalize_tags(tags: Sequence[str]) -> list[str]:
-    """Strip each tag and drop any that are empty afterwards.
+def _normalize_parts(parts: Sequence[str]) -> list[str]:
+    """Strip each part and drop any that are empty afterwards.
 
-    Order is preserved exactly as supplied. Tags are not sorted and not
+    Order is preserved exactly as supplied. Parts are not sorted and not
     deduplicated: reordering is a Backend-visible change, and inventing either
     behaviour here would be a product decision no source document makes.
     """
-    stripped = (_normalize_text(tag) for tag in tags)
-    return [tag for tag in stripped if tag]
+    stripped = (_normalize_text(part) for part in parts)
+    return [part for part in stripped if part]
 
 
 def compose_canonical_content(
     *,
     title: str,
-    description: str,
-    why_saved: str,
-    tags: Sequence[str],
-    about: str | None = None,
+    content: str | None,
+    tags: Sequence[str] | None = None,
     source: Sequence[str] = (),
+    extracted_content: str | None = None,
 ) -> str:
     """Compose the canonical text for a Memory.
 
-    Sections always appear in the order Title, Content, About, Why Saved,
-    Source, Tags. A section whose value is empty after normalization is
+    Sections always appear in the order Title, Content, Source, Extracted
+    Content, Tags. A section whose value is empty after normalization is
     omitted entirely, rather than emitted as a bare label with nothing under
     it -- an empty labelled section would add tokens that carry no meaning to
-    the embedding.
+    the embedding, and ``null`` is never rendered as text.
 
-    ``about`` and ``source`` belong to Links and default to empty, so a Note
-    composes to exactly the same string it did before they existed. That is
-    what keeps existing chunk IDs stable.
-
-    ``source`` receives already-selected text parts rather than a schema
-    object, so this module stays free of transport types. Choosing which
-    provenance fields are worth embedding is the caller's job.
+    ``source`` and ``extracted_content`` belong to Links and default to empty,
+    so a Note composes to exactly Title, Content, Tags. ``source`` receives
+    already-selected text parts rather than a schema object, so this module
+    stays free of transport types; choosing which metadata fields are worth
+    embedding is the caller's job.
 
     Returns an empty string when every field is empty. Deciding whether that
     is a request error belongs to the processing service and the error
@@ -133,11 +129,10 @@ def compose_canonical_content(
 
     for label, value in (
         (TITLE_LABEL, _normalize_text(title)),
-        (CONTENT_LABEL, _normalize_text(description)),
-        (ABOUT_LABEL, _normalize_text(about or "")),
-        (WHY_SAVED_LABEL, _normalize_text(why_saved)),
-        (SOURCE_LABEL, SOURCE_SEPARATOR.join(_normalize_tags(source))),
-        (TAGS_LABEL, TAG_SEPARATOR.join(_normalize_tags(tags))),
+        (CONTENT_LABEL, _normalize_text(content or "")),
+        (SOURCE_LABEL, SOURCE_SEPARATOR.join(_normalize_parts(source))),
+        (EXTRACTED_CONTENT_LABEL, _normalize_text(extracted_content or "")),
+        (TAGS_LABEL, TAG_SEPARATOR.join(_normalize_parts(tags or ()))),
     ):
         if value:
             sections.append(f"{label}\n{value}")

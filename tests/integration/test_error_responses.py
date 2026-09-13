@@ -198,7 +198,9 @@ def test_model_unavailable_from_a_provider_error() -> None:
 
 
 def test_internal_error_for_a_broken_user_pre_filter() -> None:
-    """A leak is a defect, reported as INTERNAL_ERROR and never retryable."""
+    """A leak is a defect, reported as INTERNAL_ERROR. The rows never leave
+    the service -- the wrapper raises instead of returning them -- so the
+    Backend retrying a 500 (contract section 21.2) exposes nothing."""
     app = app_with(vector_search=LeakingVectorSearch())
 
     for http in client_of(app):
@@ -206,7 +208,8 @@ def test_internal_error_for_a_broken_user_pre_filter() -> None:
 
         assert response.status_code == 500
         assert response.json()["error"]["code"] == "INTERNAL_ERROR"
-        assert response.json()["error"]["retryable"] is False
+        assert response.json()["error"]["retryable"] is True
+        assert "memory_x" not in response.text
 
 
 def test_internal_error_for_an_unknown_failure() -> None:

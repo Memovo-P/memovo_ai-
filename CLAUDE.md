@@ -1,21 +1,25 @@
 # Memovo AI Service - Engineering Rules
 
-The specification in the sibling `memovo-ai-docs/` repository is the **source of
-truth**, and `memovo-ai-docs/CLAUDE.md` is the authoritative ruleset. Read it
-before making changes. This file is a working summary for the code repository;
-where the two ever disagree, the docs win - report the drift rather than
-silently following this copy.
+The wire contract is `docs/AI_CONTRACT_FINAL.md` (v1.9 plus its section 21.9
+addendum) and the implementation plan is `docs/SPRINT2_GENERATION_PLAN.md`.
+Read both before making changes. The sibling `memovo-ai-docs/` repository is
+implementation history: its engineering and security rules still apply, but
+where its prose requires legacy process fields (`whySaved`, `description`) or
+excludes the generation endpoints, the adopted contract wins.
 
 Do not redesign locked product or architecture decisions unless explicitly
 instructed.
 
-## Sprint 1 scope
+## Scope
 
-Only two endpoints: `POST /ai/memories/process` and `POST /ai/memories/search`.
+Four contract endpoints: `POST /ai/memories/process`, `POST /ai/memories/search`,
+`POST /ai/chat/memories` (RAG-only, read-only) and
+`POST /ai/memories/prepare-note`.
 
-Out of scope: general chat, create-memory-via-chat, intent routing, agents,
-tool calling, Llama answer generation, AI-side DB writes, authentication or
-authorization, JWT decoding, partial reprocessing, embedding migrations.
+Out of scope: general-purpose chat, intent routing, agents, tool calling,
+memory mutation, AI-side DB writes, authentication or authorization, JWT
+decoding, URL fetching, AI-side conversation state, embedding migrations,
+any generation model or provider other than the approved one.
 
 ## Hard invariants
 
@@ -32,7 +36,14 @@ authorization, JWT decoding, partial reprocessing, embedding migrations.
 ## Locked decisions
 
 **Embeddings:** Qwen3-Embedding family, dimension 1024, chunk-level. Embedding
-input is Title + Description/Content + WhySaved + Tags.
+input is Title + Content + Tags for a Note, plus Source metadata and Extracted
+Content for a Link. `whySaved` is removed and never mapped; the URL is not
+embedded.
+
+**Generation:** OpenRouter, exactly `nvidia/nemotron-3-super-120b-a12b:free`, disabled by default.
+No paid or alternate model fallback, no SDK retries. Malformed model output is
+`502 AI_INVALID_RESPONSE`, never retryable. History is passed to the model as
+the Backend bounded it and is never trimmed here.
 
 **Chunking:** hybrid, ~500 token soft target, ~50 token overlap. Prefer
 sections, then paragraphs, then sentences, before any token-based fallback.
@@ -42,7 +53,7 @@ always yields the same `chunkId`; any change to final content changes it.
 
 **Retrieval:** Top-K 5, similarity threshold 0.75, deduplicate by `memoryId`,
 memory score = max matching chunk score, unique Memories ordered by score. No
-chunk above threshold returns the contract-defined no-match response.
+chunk above threshold returns exactly `{"found": false, "results": []}`.
 
 ## API contract
 
@@ -53,14 +64,19 @@ observable behavior.
 
 Error codes: `INVALID_INPUT`, `INVALID_REQUEST`, `EMBEDDING_FAILED`,
 `CHUNKING_FAILED`, `VECTOR_SEARCH_FAILED`, `MODEL_UNAVAILABLE`, `TIMEOUT`,
-`INTERNAL_ERROR`. Never expose stack traces, model internals, infrastructure
-secrets, or raw exception details through public API responses.
+`INTERNAL_ERROR`, `GENERATION_UNAVAILABLE`, `RATE_LIMITED`,
+`AI_INVALID_RESPONSE`. Classification is HTTP status + code; `retryable` is
+consistent metadata (every 5xx retryable except `502 AI_INVALID_RESPONSE`).
+Never expose stack traces, model internals, provider error bodies,
+infrastructure secrets, or raw exception details through public API responses.
 
 ## Privacy
 
-Never log raw Memory content, raw user queries, embeddings, retrieved chunk
-text, or `WhySaved`. Prefer structured operational metadata: correlation ID,
-endpoint, duration, chunk count, result count, safe error code.
+Never log raw Memory content, raw user queries, chat messages or history,
+prompts, generated answers, prepared notes, embeddings, retrieved chunk text,
+provider error bodies or API keys. Prefer structured operational metadata:
+correlation ID, endpoint, duration, chunk/evidence/source counts, token
+counts, safe error code, safe provider and model identifiers.
 
 ## Architecture
 

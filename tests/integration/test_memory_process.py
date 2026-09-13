@@ -1,7 +1,8 @@
-"""``POST /ai/memories/process`` through the HTTP layer.
+"""``POST /ai/memories/process`` through the HTTP layer (Note path).
 
 Drives the real application with a stub embedding provider. No model is
-loaded and no weights are downloaded.
+loaded and no weights are downloaded. Link-specific behaviour is in
+``test_link_process.py``.
 """
 
 from collections.abc import Iterator, Sequence
@@ -21,10 +22,10 @@ pytestmark = pytest.mark.integration
 ENDPOINT = "/ai/memories/process"
 
 VALID_BODY: dict[str, object] = {
+    "type": "note",
     "memoryId": "memory_456",
     "title": "MongoDB Vector Search",
-    "description": "How Atlas Vector Search works...",
-    "whySaved": "Useful for the memory project",
+    "content": "How Atlas Vector Search works...",
     "tags": ["mongodb", "vector-search", "ai"],
 }
 
@@ -64,7 +65,7 @@ def test_the_endpoint_is_mounted_at_the_contract_path(client: TestClient) -> Non
     assert client.post(ENDPOINT, json=VALID_BODY).status_code == 200
 
 
-def test_both_sprint_1_endpoints_are_published(client: TestClient) -> None:
+def test_the_retrieval_endpoints_are_published(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
 
     assert "/ai/memories/process" in paths
@@ -76,26 +77,34 @@ def test_get_is_not_allowed(client: TestClient) -> None:
 
 
 # --------------------------------------------------------------------------
-# Response shape
+# Response shape (contract section 9)
 # --------------------------------------------------------------------------
 def test_the_response_uses_the_public_field_names(client: TestClient) -> None:
     payload = client.post(ENDPOINT, json=VALID_BODY).json()
 
-    assert set(payload) == {"intent", "content", "chunks"}
+    assert set(payload) == {"memoryId", "chunks"}
     assert set(payload["chunks"][0]) == {"chunkId", "chunkIndex", "content", "embedding"}
 
 
-def test_the_intent_is_save_memory(client: TestClient) -> None:
-    assert client.post(ENDPOINT, json=VALID_BODY).json()["intent"] == "save_memory"
+def test_the_memory_id_echoes_the_request(client: TestClient) -> None:
+    assert client.post(ENDPOINT, json=VALID_BODY).json()["memoryId"] == "memory_456"
 
 
-def test_content_is_the_canonical_labelled_text(client: TestClient) -> None:
-    content = client.post(ENDPOINT, json=VALID_BODY).json()["content"]
+def test_no_legacy_top_level_fields_are_returned(client: TestClient) -> None:
+    payload = client.post(ENDPOINT, json=VALID_BODY).json()
 
-    assert content.startswith("Title:\nMongoDB Vector Search")
-    assert "Content:\nHow Atlas Vector Search works..." in content
-    assert "Why Saved:\nUseful for the memory project" in content
-    assert content.endswith("Tags:\nmongodb, vector-search, ai")
+    assert "intent" not in payload
+    assert "content" not in payload
+
+
+def test_chunk_content_is_the_canonical_labelled_text(client: TestClient) -> None:
+    content = client.post(ENDPOINT, json=VALID_BODY).json()["chunks"][0]["content"]
+
+    assert content == (
+        "Title:\nMongoDB Vector Search\n\n"
+        "Content:\nHow Atlas Vector Search works...\n\n"
+        "Tags:\nmongodb, vector-search, ai"
+    )
 
 
 def test_every_chunk_carries_an_embedding_of_the_locked_dimension(client: TestClient) -> None:
@@ -104,10 +113,11 @@ def test_every_chunk_carries_an_embedding_of_the_locked_dimension(client: TestCl
     assert payload["chunks"]
     for chunk in payload["chunks"]:
         assert len(chunk["embedding"]) == EMBEDDING_DIMENSION
+        assert all(isinstance(value, float) for value in chunk["embedding"])
 
 
 def test_chunk_indices_are_contiguous_from_zero() -> None:
-    body = {**VALID_BODY, "description": " ".join(f"w{n:03d}" for n in range(300))}
+    body = {**VALID_BODY, "content": " ".join(f"w{n:03d}" for n in range(300))}
 
     for http in client_of(app_with(target=40, overlap=0)):
         chunks = http.post(ENDPOINT, json=body).json()["chunks"]
@@ -119,12 +129,12 @@ def test_chunk_indices_are_contiguous_from_zero() -> None:
 def test_the_response_never_emits_snake_case_keys(client: TestClient) -> None:
     body = client.post(ENDPOINT, json=VALID_BODY).text
 
-    for snake in ("chunk_id", "chunk_index", "memory_id", "why_saved"):
+    for snake in ("chunk_id", "chunk_index", "memory_id"):
         assert snake not in body
 
 
 # --------------------------------------------------------------------------
-# Reprocessing (doc 01, decision 25)
+# Reprocessing (contract section 13)
 # --------------------------------------------------------------------------
 def test_reprocessing_unchanged_input_returns_identical_chunk_ids(client: TestClient) -> None:
     first = client.post(ENDPOINT, json=VALID_BODY).json()
@@ -134,10 +144,10 @@ def test_reprocessing_unchanged_input_returns_identical_chunk_ids(client: TestCl
 
 
 def test_a_changed_memory_returns_the_complete_chunk_set() -> None:
-    """Never only the changed chunks (doc 01, decision 25)."""
+    """Never only the changed chunks."""
     paragraphs = ["Alpha. " + "alpha sentence. " * 8, "Beta. " + "beta sentence. " * 8]
-    original = {**VALID_BODY, "description": "\n\n".join([*paragraphs, "Gamma. gamma text."])}
-    edited = {**VALID_BODY, "description": "\n\n".join([*paragraphs, "Delta. delta text."])}
+    original = {**VALID_BODY, "content": "\n\n".join([*paragraphs, "Gamma. gamma text."])}
+    edited = {**VALID_BODY, "content": "\n\n".join([*paragraphs, "Delta. delta text."])}
 
     for http in client_of(app_with(target=40, overlap=0)):
         first = http.post(ENDPOINT, json=original).json()["chunks"]
@@ -145,7 +155,6 @@ def test_a_changed_memory_returns_the_complete_chunk_set() -> None:
 
         assert len(first) > 1
         assert len(second) > 1
-        # The whole set comes back, not just what changed.
         assert [c["chunkIndex"] for c in second] == list(range(len(second)))
 
 
@@ -157,9 +166,9 @@ def test_no_delta_fields_appear_in_the_response(client: TestClient) -> None:
 
 
 # --------------------------------------------------------------------------
-# Request validation
+# Request validation at the HTTP boundary (contract section 8.1)
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize("field", ["memoryId", "title", "description", "whySaved", "tags"])
+@pytest.mark.parametrize("field", ["type", "memoryId", "title", "content"])
 def test_a_missing_required_field_is_rejected(client: TestClient, field: str) -> None:
     body = {key: value for key, value in VALID_BODY.items() if key != field}
 
@@ -169,27 +178,64 @@ def test_a_missing_required_field_is_rejected(client: TestClient, field: str) ->
     assert response.json()["error"]["code"] == "INVALID_INPUT"
 
 
-@pytest.mark.parametrize("extra", ["userId", "embeddingVersion", "jobId", "createdAt"])
-def test_an_out_of_scope_field_is_rejected(client: TestClient, extra: str) -> None:
-    response = client.post(ENDPOINT, json={**VALID_BODY, extra: "x"})
+@pytest.mark.parametrize(
+    "extra", ["whySaved", "description", "about", "userId", "embeddingVersion", "jobId"]
+)
+def test_a_legacy_or_out_of_scope_field_is_rejected(client: TestClient, extra: str) -> None:
+    assert client.post(ENDPOINT, json={**VALID_BODY, extra: "x"}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("type", "memo"),
+        ("memoryId", ""),
+        ("title", "t" * 201),
+        ("content", ""),
+        ("content", "c" * 10_001),
+        ("tags", [f"t{n}" for n in range(21)]),
+        ("tags", ["t" * 51]),
+        ("tags", "mongodb"),
+    ],
+)
+def test_a_contract_limit_is_enforced_at_the_boundary(
+    client: TestClient, field: str, value: object
+) -> None:
+    response = client.post(ENDPOINT, json={**VALID_BODY, field: value})
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_INPUT"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("title", ""),
+        ("title", "t" * 200),
+        ("content", "x"),
+        ("content", "c" * 10_000),
+        ("tags", None),
+        ("tags", []),
+        ("tags", [f"t{n}" for n in range(20)]),
+        ("tags", ["t" * 50]),
+    ],
+)
+def test_a_value_inside_the_contract_limits_is_accepted(
+    client: TestClient, field: str, value: object
+) -> None:
+    assert client.post(ENDPOINT, json={**VALID_BODY, field: value}).status_code == 200
+
+
+def test_absent_tags_are_accepted(client: TestClient) -> None:
+    body = {key: value for key, value in VALID_BODY.items() if key != "tags"}
+
+    assert client.post(ENDPOINT, json=body).status_code == 200
 
 
 def test_snake_case_input_is_rejected(client: TestClient) -> None:
-    body = {
-        "memory_id": "memory_456",
-        "title": "t",
-        "description": "d",
-        "why_saved": "w",
-        "tags": [],
-    }
+    body = {"type": "note", "memory_id": "memory_456", "title": "t", "content": "c"}
 
     assert client.post(ENDPOINT, json=body).status_code == 422
-
-
-def test_a_wrong_type_is_rejected(client: TestClient) -> None:
-    assert client.post(ENDPOINT, json={**VALID_BODY, "tags": "mongodb"}).status_code == 422
 
 
 def test_validation_errors_use_the_error_envelope(client: TestClient) -> None:
@@ -202,7 +248,7 @@ def test_validation_errors_use_the_error_envelope(client: TestClient) -> None:
 def test_a_rejected_value_is_not_echoed_back(client: TestClient) -> None:
     private = "a private memory about therapy"
 
-    body = client.post(ENDPOINT, json={"memoryId": "m", "description": private}).text
+    body = client.post(ENDPOINT, json={"type": "note", "memoryId": "m", "content": private}).text
 
     assert private not in body
 
@@ -214,25 +260,26 @@ def test_empty_tags_are_accepted(client: TestClient) -> None:
     response = client.post(ENDPOINT, json={**VALID_BODY, "tags": []})
 
     assert response.status_code == 200
-    assert "Tags:" not in response.json()["content"]
+    assert "Tags:" not in response.json()["chunks"][0]["content"]
 
 
 def test_arabic_content_is_accepted(client: TestClient) -> None:
-    body = {**VALID_BODY, "title": "بحث المتجهات", "description": "كيف يعمل البحث الدلالي"}
+    body = {**VALID_BODY, "title": "بحث المتجهات", "content": "كيف يعمل البحث الدلالي"}
 
     response = client.post(ENDPOINT, json=body)
 
     assert response.status_code == 200
-    assert "بحث المتجهات" in response.json()["content"]
+    assert "بحث المتجهات" in response.json()["chunks"][0]["content"]
 
 
-def test_an_entirely_empty_memory_returns_no_chunks(client: TestClient) -> None:
-    body = {"memoryId": "m", "title": "", "description": "", "whySaved": "", "tags": []}
+def test_a_memory_that_normalizes_to_nothing_returns_no_chunks(client: TestClient) -> None:
+    """``content`` must be at least one character; whitespace satisfies that
+    and still yields nothing to index. An empty chunk set is a valid response."""
+    body = {"type": "note", "memoryId": "m", "title": "", "content": "   ", "tags": []}
 
     payload = client.post(ENDPOINT, json=body).json()
 
-    assert payload["content"] == ""
-    assert payload["chunks"] == []
+    assert payload == {"memoryId": "m", "chunks": []}
 
 
 # --------------------------------------------------------------------------
@@ -248,7 +295,7 @@ def test_an_unavailable_model_reports_model_unavailable() -> None:
 
 
 def test_the_route_contains_no_ingestion_algorithm() -> None:
-    """Doc 03 Phase 08: no chunking, hashing, embedding or persistence."""
+    """No chunking, hashing, embedding or persistence in the route."""
     import ast
     from pathlib import Path
 

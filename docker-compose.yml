@@ -14,7 +14,9 @@ services:
   ai:
     build:
       context: .
-      # Set to false for a fast image that downloads weights on first start.
+      # false builds without weights. That image cannot load the model at
+      # run time either -- HF_HUB_OFFLINE=1 forbids the download -- so it
+      # boots unready. Useful for checking the image builds, not for serving.
       args:
         BAKE_MODEL: "true"
     image: memovo-ai:local
@@ -33,6 +35,11 @@ services:
     env_file:
       # Optional: real credentials, never committed. Create it from
       # .env.example. The image itself contains no .env (see .dockerignore).
+      #
+      # NOTE ON PRECEDENCE: the `environment:` block above wins over this
+      # file. Setting MEMOVO_VECTOR_PROVIDER in .env will NOT override the
+      # value set there -- edit the compose file, or remove the key from
+      # `environment:` so .env can supply it.
       - path: .env
         required: false
     read_only: true

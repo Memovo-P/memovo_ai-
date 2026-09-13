@@ -48,6 +48,7 @@ from memovo_ai.core.config import JSON_LOG_FORMAT, LoggingSettings
 
 __all__ = [
     "CORRELATION_ID_HEADER",
+    "CORRELATION_SCOPE_KEY",
     "MAX_VALUE_LENGTH",
     "SAFE_FIELDS",
     "JsonFormatter",
@@ -68,6 +69,17 @@ __all__ = [
 
 #: Correlation header the contract tells the Backend to send (section 5).
 CORRELATION_ID_HEADER = "X-Request-Id"
+
+#: ASGI scope key holding the request's correlation id.
+#:
+#: The ContextVar below is not enough on its own. Starlette's
+#: ``ServerErrorMiddleware`` -- which hosts the ``Exception`` handler -- sits
+#: *outside* this service's middleware, so by the time that handler builds a
+#: response the middleware has already re-raised and reset the ContextVar,
+#: and the response it returns never passes back through the middleware. The
+#: scope is a single dict shared by every layer, so an id written here is
+#: still readable from those outer frames.
+CORRELATION_SCOPE_KEY = "memovo_correlation_id"
 
 #: The only field names that may be logged. Every one is a count, a duration,
 #: an opaque identifier, a code or a boolean -- doc 06 section 5's "prefer"
@@ -99,6 +111,25 @@ SAFE_FIELDS = frozenset(
         "error_code",
         "error_type",
         "services_available",
+        # The configured adapter *name* only -- never its connection string,
+        # which lives in a SecretStr and is not loggable through any field.
+        "vector_provider",
+        # generation: switches, the safe model/provider identifiers, counts
+        # and durations. Never prompts, answers, evidence or provider error
+        # bodies.
+        "generation_enabled",
+        "generation_available",
+        "generation_provider",
+        "generation_model",
+        "generation_ms",
+        "prompt_tokens",
+        "completion_tokens",
+        "finish_reason",
+        "provider_status",
+        "retry_after_s",
+        "history_count",
+        "evidence_count",
+        "source_count",
     }
 )
 
