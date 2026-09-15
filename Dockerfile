@@ -73,11 +73,14 @@ COPY --from=builder --chown=memovo:memovo /app/.venv /app/.venv
 USER memovo
 
 # The weights are deliberately not baked in. A 1.2 GB layer pushed the image
-# past what the deployment target accepts, so startup downloads the model
+# past what the deployment target accepts, so the service downloads the model
 # into HF_HOME (writable by the service user above) on first start and loads
-# it from the cache on every start after that. Until the download and load
-# finish, /ready reports unavailable, exactly as it does during a cold load
-# from disk.
+# it from the cache on every start after that. The download and load run in
+# the background after the HTTP process is up: /health answers at once,
+# /ready reports "loading" until they finish. Mount a persistent volume at
+# HF_HOME so a replacement container reuses the cache instead of downloading
+# again; set HF_TOKEN (a read token, through the secret store) for better
+# rate limits on a cold download.
 ENV MEMOVO_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 
 EXPOSE 8000
@@ -85,8 +88,9 @@ EXPOSE 8000
 # Liveness only. Readiness is /ready and belongs to the orchestrator, which
 # can act on it -- Docker's HEALTHCHECK cannot take an instance out of a load
 # balancer, and wiring readiness here would only restart a container that is
-# loading a model perfectly normally. The start period covers a first-start
-# download of the weights on top of the cold load.
+# loading a model perfectly normally. Liveness answers before the model is
+# loaded, so the start period only has to cover process start; it is left
+# generous for a slow host.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/health').read()"
 

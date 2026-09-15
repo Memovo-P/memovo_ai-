@@ -11,7 +11,8 @@ never at module import. Unit tests inject a fake encoder and therefore neither
 import the library nor download weights.
 
 The model is loaded once and shared (doc 02, section 7). ``load()`` is called
-at startup; nothing loads per request.
+once, from the background build that runs after the HTTP process has started;
+nothing loads per request.
 
 Threading
 ---------

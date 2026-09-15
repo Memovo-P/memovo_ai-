@@ -382,3 +382,42 @@ def test_ci_boots_the_image_and_probes_it() -> None:
 
     assert "/health" in commands
     assert "/ready" in commands
+
+
+# ---------------------------------------------------------------------------
+# Runtime model download: token and cache guidance
+# ---------------------------------------------------------------------------
+
+
+def test_the_env_example_offers_a_hugging_face_token_without_a_value() -> None:
+    """The library reads HF_TOKEN itself; the example must name it, and
+    must not ship one."""
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert re.search(r"^HF_TOKEN=$", text, re.MULTILINE)
+
+
+def test_the_deployment_guide_documents_the_cold_start_lifecycle() -> None:
+    """What an operator needs to run this on a platform with a healthcheck."""
+    guide = DEPLOYMENT_DOC.read_text(encoding="utf-8")
+
+    for needle in (
+        "/health",
+        '{"status":"loading"}',
+        "HF_TOKEN",
+        "/home/memovo/.cache/huggingface",
+        "PORT",
+    ):
+        assert needle in guide
+
+
+def test_the_deployment_guide_points_the_platform_healthcheck_at_liveness() -> None:
+    """Readiness is 503 for the whole cold load; a healthcheck on it kills
+    a healthy deployment."""
+    guide = DEPLOYMENT_DOC.read_text(encoding="utf-8")
+
+    assert "### Railway" in guide
+    railway = guide.split("### Railway", 1)[1]
+
+    assert "| Healthcheck path | `/health` |" in railway
+    assert "`/ready`" in railway

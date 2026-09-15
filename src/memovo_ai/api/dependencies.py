@@ -271,6 +271,8 @@ def build_services(
 
     The embedding provider is built once and shared, so the model is loaded a
     single time no matter how many services use it (doc 02, section 7).
+    Synchronous and slow on a cold cache: ``main`` runs it on a worker thread
+    after the HTTP process is up, so it must not assume a running event loop.
 
     Configuration is validated first, before the model is loaded. A setting
     the service must refuse should be reported in the first second of startup,
@@ -308,14 +310,14 @@ def build_services(
 
 
 def get_memory_search_service(request: Request) -> MemorySearchService:
-    """Return the service built at startup.
+    """Return the service the background build installed.
 
-    The model is loaded once during startup and shared (doc 02, section 7);
+    The model is loaded once, by that build, and shared (doc 02, section 7);
     nothing is constructed per request.
 
     Raises:
-        ModelUnavailableError: if startup could not build the service. Phase
-            15 maps this to ``MODEL_UNAVAILABLE``.
+        ModelUnavailableError: while the build is still running, and after it
+            failed. Phase 15 maps this to ``MODEL_UNAVAILABLE``.
     """
     service: MemorySearchService | None = getattr(request.app.state, "memory_search_service", None)
 
@@ -327,11 +329,11 @@ def get_memory_search_service(request: Request) -> MemorySearchService:
 
 
 def get_memory_processor_service(request: Request) -> MemoryProcessorService:
-    """Return the processor built at startup.
+    """Return the processor the background build installed.
 
     Raises:
-        ModelUnavailableError: if startup could not build it. Phase 15 maps
-            this to ``MODEL_UNAVAILABLE``.
+        ModelUnavailableError: while the build is still running, and after it
+            failed. Phase 15 maps this to ``MODEL_UNAVAILABLE``.
     """
     service: MemoryProcessorService | None = getattr(
         request.app.state, "memory_processor_service", None
@@ -345,12 +347,12 @@ def get_memory_processor_service(request: Request) -> MemoryProcessorService:
 
 
 def get_memory_chat_service(request: Request) -> MemoryChatService:
-    """Return the chat service built at startup.
+    """Return the chat service the background build installed.
 
     Raises:
-        ModelUnavailableError: if startup could not build the services at
-            all. A built service whose generation is disabled answers
-            ``GENERATION_UNAVAILABLE`` itself.
+        ModelUnavailableError: while the build is still running, and after it
+            failed to produce any services. A built service whose generation
+            is disabled answers ``GENERATION_UNAVAILABLE`` itself.
     """
     service: MemoryChatService | None = getattr(request.app.state, "memory_chat_service", None)
 
@@ -362,7 +364,7 @@ def get_memory_chat_service(request: Request) -> MemoryChatService:
 
 
 def get_note_preparation_service(request: Request) -> NotePreparationService:
-    """Return the note preparation service built at startup."""
+    """Return the note preparation service the background build installed."""
     service: NotePreparationService | None = getattr(
         request.app.state, "note_preparation_service", None
     )

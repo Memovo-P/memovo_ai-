@@ -4,7 +4,7 @@ The distinction under test is the one that matters operationally: liveness
 must not depend on the model, readiness must.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 
 import pytest
 from fastapi import FastAPI
@@ -49,11 +49,12 @@ def working_services() -> Services:
 
 
 def ready_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    """An application whose startup builds services successfully.
+    """An application whose background build produces working services.
 
     Patched at the composition root rather than through
-    ``dependency_overrides``: readiness reflects what *startup* achieved, and
-    an override does not change that.
+    ``dependency_overrides``: readiness reflects what the build achieved, and
+    an override does not change that. The build runs after the lifespan has
+    yielded, so a test observing its outcome calls ``settled`` first.
     """
     monkeypatch.setattr("memovo_ai.main.build_services", working_services)
 
@@ -108,28 +109,32 @@ def test_readiness_is_refused_without_services(unavailable: TestClient) -> None:
     assert response.json() == {"status": "unavailable"}
 
 
-def test_readiness_succeeds_once_startup_built_the_services(
-    monkeypatch: pytest.MonkeyPatch,
+def test_readiness_succeeds_once_the_build_installed_the_services(
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
 ) -> None:
     with TestClient(ready_app(monkeypatch)) as client:
+        settled(client)
         response = client.get(READY)
 
     assert response.status_code == OK
     assert response.json() == {"status": "ready"}
 
 
-def test_readiness_is_withdrawn_at_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_readiness_is_withdrawn_at_shutdown(
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
+) -> None:
     """A draining instance must stop attracting traffic."""
     application = ready_app(monkeypatch)
 
     with TestClient(application) as client:
+        settled(client)
         assert client.get(READY).status_code == OK
 
     assert readiness_of(application.state) is ReadinessState.UNAVAILABLE
 
 
-def test_a_failed_startup_leaves_the_service_unready(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_failed_build_leaves_the_service_unready(
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
 ) -> None:
     """The exact path a missing model or a bad Atlas URI takes."""
 
@@ -140,6 +145,8 @@ def test_a_failed_startup_leaves_the_service_unready(
     monkeypatch.setattr("memovo_ai.main.build_services", explode)
 
     with TestClient(create_app()) as client:
+        assert client.get(HEALTH).status_code == OK
+        settled(client)
         assert client.get(HEALTH).status_code == OK
         assert client.get(READY).status_code == UNAVAILABLE
 

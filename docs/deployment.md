@@ -17,12 +17,31 @@ level unless it says so.
 | `POST /ai/memories/search` | §14–16 | embedding model, Atlas (read-only) | implemented, locally tested; live Atlas pending |
 | `POST /ai/chat/memories` | §17 | the above + generation | implemented, locally tested with a fake model; real model **not** verified |
 | `POST /ai/memories/prepare-note` | §6 | generation | implemented, locally tested with a fake model; real model **not** verified |
-| `GET /health`, `GET /ready` | operational | — | liveness / readiness of the retrieval services |
+| `GET /health` | operational | — | liveness: the process serves HTTP. Never depends on the model, Atlas or generation |
+| `GET /ready` | operational | — | readiness: the retrieval services are built and usable |
 
 Readiness certifies the embedding model and vector adapter were built. It does **not** probe
 Atlas or the generation provider, and it does not change when generation is disabled: an
 instance with generation off stays in rotation and the two generation endpoints answer
 `503 GENERATION_UNAVAILABLE` on their own.
+
+**Process startup and service readiness are two different events.** The HTTP process is up
+within seconds; the retrieval services follow once the embedding model is loaded, which on a
+cold cache includes downloading it. The lifecycle every deployment goes through:
+
+| Step | `/health` | `/ready` | AI endpoints |
+|---|---|---|---|
+| container starts; configuration validated | — | — | — |
+| invalid production configuration (`MEMOVO_ENV=production` with `MEMOVO_VECTOR_PROVIDER=fake`) | process exits, `service.startup_rejected` logged | | |
+| HTTP bound; model downloading / loading in the background | `200 {"status":"alive"}` | `503 {"status":"loading"}` | `503 MODEL_UNAVAILABLE` (retryable) |
+| build finished | `200` | `200 {"status":"ready"}` | serving |
+| build failed (weights missing, Atlas URI unset) | `200` | `503 {"status":"unavailable"}` | `503 MODEL_UNAVAILABLE`; `service.startup_failed` logged |
+| shutdown began | `200` until exit | `503 {"status":"unavailable"}` | draining |
+
+A platform healthcheck or liveness probe must therefore target `/health`. Pointing it at
+`/ready` turns a normal cold load into a killed deployment. Traffic routing is the Backend's
+concern: it owns retries, and `MODEL_UNAVAILABLE` is retryable, so requests that arrive during
+the load are retried rather than lost.
 
 ## 2. Build and run
 
@@ -33,10 +52,24 @@ docker build -t memovo-ai:<release> .   # no weights in the image; downloaded on
 The image holds the embedding runtime but not the weights: `Qwen/Qwen3-Embedding-0.6B` is
 downloaded into `HF_HOME` (`/home/memovo/.cache/huggingface`) on first start and loaded from
 that cache afterwards, so the runtime needs outbound access to `https://huggingface.co` on a
-cold cache. `/ready` reports unavailable until the download and load finish. Set
+cold cache. The download and load happen in the background after the HTTP process is up:
+`/health` answers immediately and `/ready` reports `loading` until they finish (see §1). Set
 `HF_HUB_OFFLINE=1` to forbid the download and require a pre-populated cache. No generation
 weights are ever downloaded: generation is a hosted API call. The runtime also needs outbound
 access to Atlas and, when generation is enabled, to `https://openrouter.ai`.
+
+Two optional pieces of runtime environment make cold starts faster and more reliable. Neither
+is a `MEMOVO_*` setting and neither is parsed by the service:
+
+- `HF_TOKEN`: a Hugging Face **read** token, which is all a public model needs. The
+  `huggingface_hub` library picks it up on its own and gets higher rate limits and more reliable
+  downloads. It is a secret: keep it in `.env` locally (ignored by git) or in the platform's
+  secret store, never in the image, the compose file or the repository. A missing token is not
+  an application error; the download runs unauthenticated and logs a one-line warning.
+- A persistent volume mounted at `/home/memovo/.cache/huggingface`, so a replacement container
+  finds the weights already downloaded and reaches `ready` in the time of a load from disk, not
+  a download. Operational configuration, not a secret. Without it every new container downloads
+  the model again.
 
 ```bash
 cp .env.example .env            # then edit; never commit .env
@@ -48,6 +81,31 @@ docker run -d --name memovo-ai --env-file .env --read-only --tmpfs /tmp \
 Changing `.env` requires recreating the container; `docker restart` does not reread it.
 `docker-compose.yml` sets `MEMOVO_ENV` and `MEMOVO_VECTOR_PROVIDER` in its `environment:` block,
 which wins over `.env`. The service is internal: never publish it beyond the Backend network.
+
+### Railway
+
+The image is Railway-compatible as built: the `CMD` listens on the `PORT` Railway injects
+(falling back to 8000 elsewhere) with one Uvicorn worker, and the weights are not baked in. The
+settings below are configured in the Railway service, not in the repository.
+
+| Setting | Value | Why |
+|---|---|---|
+| Healthcheck path | `/health` | Liveness. It answers as soon as the process is up. It is **not** `/ready`: readiness is 503 for the whole cold load, and a healthcheck on it kills a healthy deployment |
+| Healthcheck timeout | default (300 s) is enough | `/health` answers within seconds of container start; the model load no longer gates it |
+| `PORT` | leave to Railway | Railway injects it and sends healthchecks to it; the container honours it. Do not hardcode a different value |
+| `HF_TOKEN` | secret variable, a Hugging Face read token | Optional. Better rate limits and reliability while downloading a cold cache; never committed |
+| Volume | mount at `/home/memovo/.cache/huggingface` | Optional but recommended. The first healthy deployment downloads the model; every later container replacement reuses the cache and becomes ready in seconds instead of minutes. Not a secret |
+| `MEMOVO_ENV` | `production` | Enables the production guards |
+| `MEMOVO_VECTOR_PROVIDER` | `atlas` | `fake` is refused in production and the process exits |
+| `MEMOVO_ATLAS_URI` | secret variable | Required for `atlas`; unset leaves the instance alive but unready (`service.startup_failed`, `VectorSearchUnavailableError`) |
+| `MEMOVO_ATLAS_DATABASE`, `MEMOVO_ATLAS_COLLECTION`, `MEMOVO_ATLAS_INDEX` | as provisioned by the Backend | Defaults in §3 |
+| `MEMOVO_GENERATION_ENABLED`, `MEMOVO_OPENROUTER_API_KEY` | only if generation is wanted | Retrieval readiness never depends on them |
+| Memory | at least 1 GB | The loaded model is roughly 0.8 GB resident on CPU |
+
+What the deploy log shows on a cold cache, in order: `service.initialization_started`, the
+Hugging Face download lines, `service.started` with `services_available: true`, and `/ready`
+turning 200. `Uvicorn running on http://0.0.0.0:<PORT>` appears before the download begins;
+if it never appears, the problem is process start, not the model.
 
 ## 3. Configuration
 
@@ -234,12 +292,12 @@ are sent to any hosted model.
 
 | Check | Result |
 |---|---|
-| `uv run pytest` | 1728 passed, 16 skipped (opt-in Atlas, embedding-model and OpenRouter tests) |
+| `uv run pytest` | 1746 passed, 16 skipped (opt-in Atlas, embedding-model and OpenRouter tests) |
 | `uv run ruff check .` / `ruff format --check .` / `mypy src` | clean |
 | Hosted CI | never executed: no git remote |
 | Live Atlas | not run |
 | Real generation model | Free Nemotron smoke passed; 11 chat and 6 note cases completed (2026-09-13); see results below |
-| Docker image | not rebuilt in this session |
+| Docker image | built 2026-09-15 without weights (433 MB compressed); a full cold start, download included, reached `/ready` 200 locally. The background-load lifecycle is covered by `tests/integration/test_startup_lifecycle.py` with a blocking fake build, not by a real download |
 
 ### Free-model evaluation, 2026-09-13
 

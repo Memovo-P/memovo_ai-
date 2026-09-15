@@ -4,7 +4,7 @@ Drives the real application with a fake vector index and a stub embedding
 provider. No model is loaded and no weights are downloaded.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 
 import pytest
 from fastapi import FastAPI
@@ -266,7 +266,7 @@ def test_startup_survives_a_missing_model_runtime() -> None:
 
 
 def test_startup_survives_a_misconfigured_vector_database(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
 ) -> None:
     """An unset Atlas URI is a configuration problem, not a reason to crash.
 
@@ -284,6 +284,7 @@ def test_startup_survives_a_misconfigured_vector_database(
 
     with TestClient(main.create_app(), raise_server_exceptions=False) as http:
         assert http.get("/openapi.json").status_code == 200
+        settled(http)
 
         response = http.post(ENDPOINT, json={"query": "q", "userId": USER})
         assert response.status_code == 503

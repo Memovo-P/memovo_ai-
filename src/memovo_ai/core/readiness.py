@@ -30,7 +30,8 @@ class ReadinessState(StrEnum):
     #: The application object exists; startup has not run yet.
     STARTING = "starting"
 
-    #: Startup is building the services, which loads the embedding model.
+    #: The HTTP process is up and the background build is loading the
+    #: embedding model. Liveness already answers; readiness does not yet.
     LOADING = "loading"
 
     #: Every service is built. The AI endpoints can serve traffic.

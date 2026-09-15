@@ -57,8 +57,8 @@ services:
         - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()
       interval: 30s
       timeout: 3s
-      # Generous: a first start downloads the weights, a cold model load on
-      # CPU is slow, and a container killed mid-load never finishes one.
+      # Liveness answers before the model is loaded, so this only has to
+      # cover process start; left generous for a slow host.
       start_period: 300s
       retries: 3
     restart: unless-stopped

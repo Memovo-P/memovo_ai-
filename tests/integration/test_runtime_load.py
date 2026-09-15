@@ -18,7 +18,7 @@ from memovo_ai.api.dependencies import Services
 from memovo_ai.core.config import GenerationSettings, SearchSettings
 from memovo_ai.embeddings import EMBEDDING_DIMENSION, Embedding
 from memovo_ai.generation import BoundedGenerationProvider, GenerationRequest, GenerationResult
-from memovo_ai.main import create_app
+from memovo_ai.main import create_app, wait_for_initialization
 from memovo_ai.providers.vector_search import FakeVectorSearchProvider, VectorRecord
 from memovo_ai.services import (
     MemoryChatService,
@@ -101,13 +101,18 @@ def services_with(generation: SlowGeneration, *, slots: int) -> Services:
 async def running_app(
     monkeypatch: pytest.MonkeyPatch, generation: SlowGeneration, *, slots: int = 2
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    """The real startup path with working services, over an ASGI transport."""
+    """The real startup path with working services, over an ASGI transport.
+
+    Startup yields before the build finishes, so the services are waited for
+    explicitly: these tests are about load on a *ready* instance.
+    """
     monkeypatch.setattr(
         "memovo_ai.main.build_services", lambda: services_with(generation, slots=slots)
     )
     app = create_app()
 
     async with app.router.lifespan_context(app):
+        await wait_for_initialization(app)
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://ai") as client:
             yield app, client
@@ -242,6 +247,7 @@ async def test_readiness_does_not_depend_on_generation(monkeypatch: pytest.Monke
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://ai") as client,
     ):
+        await wait_for_initialization(app)
         assert (await client.get("/ready")).status_code == 200
         chat = await client.post(CHAT, json=chat_body())
         assert chat.status_code == 503

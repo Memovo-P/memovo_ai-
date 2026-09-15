@@ -14,7 +14,7 @@ known provider and raises ``ValueError`` at startup. Both are covered below.
 
 import json
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,6 +97,22 @@ def rendered(caplog: pytest.LogCaptureFixture) -> str:
     formatter = JsonFormatter()
 
     return "\n".join(formatter.format(item) for item in caplog.records)
+
+
+def production_with_the_fake_provider(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """The configuration startup must refuse, plus a build that records
+    whether it was ever reached. Returns that record."""
+    monkeypatch.setenv("MEMOVO_ENV", "production")
+    monkeypatch.setenv("MEMOVO_VECTOR_PROVIDER", FAKE_VECTOR_PROVIDER)
+    built: list[bool] = []
+
+    def must_not_build() -> Services:
+        built.append(True)
+        return working_services()  # pragma: no cover - reaching here is the failure
+
+    monkeypatch.setattr("memovo_ai.main.build_services", must_not_build)
+
+    return built
 
 
 # ---------------------------------------------------------------------------
@@ -197,30 +213,33 @@ def test_a_misconfiguration_is_reported_even_when_the_model_is_missing(
 def test_startup_fails_rather_than_starting_unready(monkeypatch: pytest.MonkeyPatch) -> None:
     """A wrong setting cannot fix itself, so it is not tolerated.
 
-    Contrast ``test_a_failed_startup_leaves_the_service_unready`` in
+    Contrast ``test_a_failed_build_leaves_the_service_unready`` in
     test_health.py: a missing model *is* tolerated, because it may recover
     and because a crash loop tells an operator less. A misconfiguration is
     the opposite case.
     """
-
-    def rejected() -> Services:
-        message = f"{FAKE_VECTOR_PROVIDER} is not permitted in production"
-        raise InvalidConfigurationError(message)
-
-    monkeypatch.setattr("memovo_ai.main.build_services", rejected)
+    production_with_the_fake_provider(monkeypatch)
 
     with pytest.raises(InvalidConfigurationError), TestClient(create_app()):
         pass  # pragma: no cover - startup raises before the body runs
 
 
+def test_a_rejected_startup_never_schedules_the_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The build runs in the background now, so the refusal has to happen
+    before it is scheduled -- otherwise the model would load for a process
+    that was never allowed to serve."""
+    built = production_with_the_fake_provider(monkeypatch)
+
+    with pytest.raises(InvalidConfigurationError), TestClient(create_app()):
+        pass  # pragma: no cover - startup raises before the body runs
+
+    assert built == []
+
+
 def test_readiness_never_becomes_ready_when_startup_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def rejected() -> Services:
-        message = "refused"
-        raise InvalidConfigurationError(message)
-
-    monkeypatch.setattr("memovo_ai.main.build_services", rejected)
+    production_with_the_fake_provider(monkeypatch)
     application = create_app()
 
     with pytest.raises(InvalidConfigurationError), TestClient(application):
@@ -233,11 +252,7 @@ def test_readiness_never_becomes_ready_when_startup_is_rejected(
 def test_the_rejection_is_logged_as_critical(
     monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
 ) -> None:
-    def rejected() -> Services:
-        message = "refused"
-        raise InvalidConfigurationError(message)
-
-    monkeypatch.setattr("memovo_ai.main.build_services", rejected)
+    production_with_the_fake_provider(monkeypatch)
 
     with pytest.raises(InvalidConfigurationError), TestClient(create_app()):
         pass  # pragma: no cover - startup raises before the body runs
@@ -255,16 +270,13 @@ def test_the_rejection_is_logged_as_critical(
 def test_a_rejected_startup_never_reports_started(
     monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
 ) -> None:
-    def rejected() -> Services:
-        message = "refused"
-        raise InvalidConfigurationError(message)
-
-    monkeypatch.setattr("memovo_ai.main.build_services", rejected)
+    production_with_the_fake_provider(monkeypatch)
 
     with pytest.raises(InvalidConfigurationError), TestClient(create_app()):
         pass  # pragma: no cover - startup raises before the body runs
 
     assert events(logs, "service.started") == []
+    assert events(logs, "service.initialization_started") == []
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +315,9 @@ def test_an_unknown_provider_value_still_raises_value_error() -> None:
         build_vector_search_provider(provider_settings("elasticsearch"), runtime("development"))
 
 
-def test_a_tolerated_failure_still_starts_unready(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_tolerated_failure_still_starts_unready(
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
+) -> None:
     """The new clause must not have widened what startup refuses."""
 
     def unavailable() -> Services:
@@ -313,6 +327,7 @@ def test_a_tolerated_failure_still_starts_unready(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("memovo_ai.main.build_services", unavailable)
 
     with TestClient(create_app()) as client:
+        settled(client)
         assert client.get(READY).status_code == UNAVAILABLE
 
 
@@ -322,7 +337,7 @@ def test_a_tolerated_failure_still_starts_unready(monkeypatch: pytest.MonkeyPatc
 
 
 def test_a_missing_atlas_uri_is_tolerated_rather_than_fatal(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
 ) -> None:
     """Unlike the fake provider, this is **not** a startup rejection.
 
@@ -338,12 +353,13 @@ def test_a_missing_atlas_uri_is_tolerated_rather_than_fatal(
     )
 
     with TestClient(create_app()) as client:
+        settled(client)
         assert client.get(READY).status_code == UNAVAILABLE
         assert client.get("/health").status_code == OK
 
 
 def test_a_missing_atlas_uri_reports_model_unavailable_not_vector_search_failed(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, settled: Callable[[TestClient], None]
 ) -> None:
     """The actual behaviour, pinned because it is **misleading**.
 
@@ -365,6 +381,7 @@ def test_a_missing_atlas_uri_reports_model_unavailable_not_vector_search_failed(
     )
 
     with TestClient(create_app(), raise_server_exceptions=False) as client:
+        settled(client)
         response = client.post("/ai/memories/search", json={"userId": "u1", "query": "anything"})
 
     assert response.status_code == UNAVAILABLE
@@ -372,7 +389,9 @@ def test_a_missing_atlas_uri_reports_model_unavailable_not_vector_search_failed(
 
 
 def test_the_startup_log_names_the_real_cause_of_a_missing_uri(
-    monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
+    logs: pytest.LogCaptureFixture,
+    settled: Callable[[TestClient], None],
 ) -> None:
     """The log is accurate even though the response code is not.
 
@@ -386,8 +405,8 @@ def test_the_startup_log_names_the_real_cause_of_a_missing_uri(
         "memovo_ai.api.dependencies.build_embedding_provider", lambda *_: StubEmbeddings()
     )
 
-    with TestClient(create_app()):
-        pass
+    with TestClient(create_app()) as client:
+        settled(client)
 
     assert events(logs, "service.startup_failed")[0]["error_type"] == (
         "VectorSearchUnavailableError"
@@ -401,19 +420,24 @@ def test_the_startup_log_names_the_real_cause_of_a_missing_uri(
 
 
 def test_the_configured_provider_is_logged_at_startup(
-    monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
+    logs: pytest.LogCaptureFixture,
+    settled: Callable[[TestClient], None],
 ) -> None:
     monkeypatch.setenv("MEMOVO_VECTOR_PROVIDER", ATLAS_VECTOR_PROVIDER)
     monkeypatch.setattr("memovo_ai.main.build_services", working_services)
 
     with TestClient(create_app()) as client:
+        settled(client)
         assert client.get(READY).status_code == OK
 
     assert events(logs, "service.started")[0]["vector_provider"] == ATLAS_VECTOR_PROVIDER
 
 
 def test_the_provider_is_logged_even_when_startup_degraded(
-    monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
+    logs: pytest.LogCaptureFixture,
+    settled: Callable[[TestClient], None],
 ) -> None:
     """The case an operator most needs it: something went wrong."""
     monkeypatch.setenv("MEMOVO_VECTOR_PROVIDER", ATLAS_VECTOR_PROVIDER)
@@ -424,8 +448,8 @@ def test_the_provider_is_logged_even_when_startup_degraded(
 
     monkeypatch.setattr("memovo_ai.main.build_services", unavailable)
 
-    with TestClient(create_app()):
-        pass
+    with TestClient(create_app()) as client:
+        settled(client)
 
     entry = events(logs, "service.started")[0]
 
@@ -447,15 +471,17 @@ def test_the_fake_provider_is_visible_in_the_log(logs: pytest.LogCaptureFixture)
 
 
 def test_the_atlas_connection_string_never_reaches_a_log(
-    monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
+    logs: pytest.LogCaptureFixture,
+    settled: Callable[[TestClient], None],
 ) -> None:
     """Logging the provider name must not drag its configuration along."""
     monkeypatch.setenv("MEMOVO_VECTOR_PROVIDER", ATLAS_VECTOR_PROVIDER)
     monkeypatch.setenv("MEMOVO_ATLAS_URI", ATLAS_URI)
     monkeypatch.setattr("memovo_ai.main.build_services", working_services)
 
-    with TestClient(create_app()):
-        pass
+    with TestClient(create_app()) as client:
+        settled(client)
 
     output = rendered(logs)
 
@@ -486,12 +512,7 @@ def test_a_rejected_startup_logs_no_connection_string(
 ) -> None:
     """The refusal path must be as careful as the success path."""
     monkeypatch.setenv("MEMOVO_ATLAS_URI", ATLAS_URI)
-
-    def rejected() -> Services:
-        message = f"refused with {ATLAS_URI}"
-        raise InvalidConfigurationError(message)
-
-    monkeypatch.setattr("memovo_ai.main.build_services", rejected)
+    production_with_the_fake_provider(monkeypatch)
 
     with pytest.raises(InvalidConfigurationError), TestClient(create_app()):
         pass  # pragma: no cover - startup raises before the body runs
