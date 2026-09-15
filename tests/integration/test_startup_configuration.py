@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from memovo_ai.api.dependencies import Services, build_services, build_vector_search_provider
 from memovo_ai.core.config import (
     ATLAS_VECTOR_PROVIDER,
+    DEFAULT_ENV,
     FAKE_VECTOR_PROVIDER,
     AtlasSettings,
     InvalidConfigurationError,
@@ -457,8 +458,17 @@ def test_the_provider_is_logged_even_when_startup_degraded(
     assert entry["services_available"] is False
 
 
-def test_the_fake_provider_is_visible_in_the_log(logs: pytest.LogCaptureFixture) -> None:
-    """So "why does search return nothing" is answerable from one log line."""
+def test_the_fake_provider_is_visible_in_the_log(
+    monkeypatch: pytest.MonkeyPatch, logs: pytest.LogCaptureFixture
+) -> None:
+    """So "why does search return nothing" is answerable from one log line.
+
+    The configuration is set here, not inherited: a developer's ``.env`` may
+    select Atlas, or production, where fake is refused outright.
+    """
+    monkeypatch.setenv("MEMOVO_ENV", DEFAULT_ENV)
+    monkeypatch.setenv("MEMOVO_VECTOR_PROVIDER", FAKE_VECTOR_PROVIDER)
+
     with TestClient(create_app(load_services=False)):
         pass
 

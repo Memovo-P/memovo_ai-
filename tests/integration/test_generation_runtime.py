@@ -20,10 +20,14 @@ from memovo_ai.api.dependencies import (
     get_memory_search_service,
 )
 from memovo_ai.core.config import (
+    DEFAULT_ENV,
     DEFAULT_GENERATION_MODEL,
     DEFAULT_OPENROUTER_BASE_URL,
+    FAKE_VECTOR_PROVIDER,
     GenerationSettings,
     OpenRouterSettings,
+    ProviderSettings,
+    RuntimeSettings,
 )
 from memovo_ai.core.logging import JsonFormatter
 from memovo_ai.generation import (
@@ -151,7 +155,12 @@ def test_enabled_generation_with_a_key_builds_the_bounded_openrouter_adapter() -
 def test_processing_and_search_are_built_without_generation(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Enabled but unusable generation degrades; it never blocks the rest."""
+    """Enabled but unusable generation degrades; it never blocks the rest.
+
+    The vector and runtime settings are passed explicitly: this test is about
+    generation, and it must not pick up a developer's ``.env`` selecting Atlas
+    or production.
+    """
     from memovo_ai.api import dependencies
     from memovo_ai.embeddings import EMBEDDING_DIMENSION
 
@@ -168,6 +177,10 @@ def test_processing_and_search_are_built_without_generation(
 
     with caplog.at_level(logging.ERROR):
         services = build_services(
+            provider_settings=ProviderSettings(
+                _env_file=None, vector_provider=FAKE_VECTOR_PROVIDER
+            ),  # type: ignore[call-arg]
+            runtime_settings=RuntimeSettings(_env_file=None, env=DEFAULT_ENV),  # type: ignore[call-arg]
             generation_settings=generation(enabled=True),
             openrouter_settings=openrouter(),
         )
