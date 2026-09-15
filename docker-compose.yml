@@ -14,11 +14,6 @@ services:
   ai:
     build:
       context: .
-      # false builds without weights. That image cannot load the model at
-      # run time either -- HF_HUB_OFFLINE=1 forbids the download -- so it
-      # boots unready. Useful for checking the image builds, not for serving.
-      args:
-        BAKE_MODEL: "true"
     image: memovo-ai:local
     ports:
       - target: 8000
@@ -45,9 +40,13 @@ services:
     read_only: true
     tmpfs:
       # The root filesystem is read-only, so give the process the scratch
-      # space a tokenizer and a temp file need. Model weights are already
-      # baked into the image and are only read.
+      # space a tokenizer and a temp file need.
       - /tmp
+    volumes:
+      # Model weights are downloaded on first start, not baked into the
+      # image. A named volume keeps them across container recreations so the
+      # download happens once per machine, not once per `up`.
+      - hf-cache:/home/memovo/.cache/huggingface
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -58,8 +57,11 @@ services:
         - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()
       interval: 30s
       timeout: 3s
-      # Generous: a cold model load on CPU is slow, and a container killed
-      # mid-load never finishes one.
-      start_period: 120s
+      # Generous: a first start downloads the weights, a cold model load on
+      # CPU is slow, and a container killed mid-load never finishes one.
+      start_period: 300s
       retries: 3
     restart: unless-stopped
+
+volumes:
+  hf-cache:

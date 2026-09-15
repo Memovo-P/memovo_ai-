@@ -103,10 +103,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          # Weights are not baked here: CI proves the image builds and boots,
-          # not that a 1.2 GB download works. The release build sets
-          # BAKE_MODEL=true.
-          build-args: BAKE_MODEL=false
           load: true
           tags: memovo-ai:ci
           cache-from: type=gha
@@ -114,12 +110,13 @@ jobs:
 
       - name: Boot and probe
         # Proves the image actually serves: the process starts, liveness
-        # answers, and readiness reports unavailable because no model is
-        # present in a thin image. A container that builds but cannot boot
-        # is the classic thing a build-only job misses.
+        # answers, and readiness reports unavailable because HF_HUB_OFFLINE=1
+        # forbids the first-start download, so no model is present. CI stays
+        # light and never fetches the 1.2 GB of weights. A container that
+        # builds but cannot boot is the classic thing a build-only job misses.
         run: |
           docker run -d --name memovo-ci -p 8000:8000 \
-            -e MEMOVO_VECTOR_PROVIDER=fake memovo-ai:ci
+            -e MEMOVO_VECTOR_PROVIDER=fake -e HF_HUB_OFFLINE=1 memovo-ai:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8000/health; then break; fi
             sleep 2

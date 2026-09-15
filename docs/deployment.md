@@ -27,17 +27,21 @@ instance with generation off stays in rotation and the two generation endpoints 
 ## 2. Build and run
 
 ```bash
-docker build -t memovo-ai:<release> .                       # weights baked in; offline at run time
-docker build --build-arg BAKE_MODEL=false -t memovo-ai:thin . # build check only; boots unready
+docker build -t memovo-ai:<release> .   # no weights in the image; downloaded on first start
 ```
 
-The image holds the embedding model only. No generation weights are ever downloaded: generation
-is a hosted API call. The runtime therefore needs outbound access to Atlas and, when generation
-is enabled, to `https://openrouter.ai`.
+The image holds the embedding runtime but not the weights: `Qwen/Qwen3-Embedding-0.6B` is
+downloaded into `HF_HOME` (`/home/memovo/.cache/huggingface`) on first start and loaded from
+that cache afterwards, so the runtime needs outbound access to `https://huggingface.co` on a
+cold cache. `/ready` reports unavailable until the download and load finish. Set
+`HF_HUB_OFFLINE=1` to forbid the download and require a pre-populated cache. No generation
+weights are ever downloaded: generation is a hosted API call. The runtime also needs outbound
+access to Atlas and, when generation is enabled, to `https://openrouter.ai`.
 
 ```bash
 cp .env.example .env            # then edit; never commit .env
 docker run -d --name memovo-ai --env-file .env --read-only --tmpfs /tmp \
+  -v memovo-hf-cache:/home/memovo/.cache/huggingface \
   --security-opt no-new-privileges:true -p 127.0.0.1:8000:8000 memovo-ai:<release>
 ```
 

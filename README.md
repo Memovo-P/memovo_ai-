@@ -86,8 +86,7 @@ and the current verification status.
 ## Docker
 
 ```bash
-docker build -t memovo-ai:<release> .                          # embedding weights baked in
-docker build --build-arg BAKE_MODEL=false -t memovo-ai:thin .  # build check only
+docker build -t memovo-ai:<release> .   # embedding weights are downloaded on first start
 docker compose up --build
 ```
 

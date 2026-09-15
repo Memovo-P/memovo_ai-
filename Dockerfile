@@ -1,7 +1,7 @@
 # Memovo AI Service (doc 03, Phase 23; doc 06, sections 7-8).
 #
-# The image holds exactly what doc 06 section 8 lists: the FastAPI
-# application, the Qwen embedding runtime and its tokenizer, the read-only
+# The image holds the FastAPI application, the Qwen embedding runtime (the
+# weights themselves are fetched at first start, see below), the read-only
 # vector adapter, configuration, and the health/readiness endpoints. No queue
 # orchestration -- that is the Backend's, and bundling it here would put a
 # Backend responsibility inside the AI boundary.
@@ -57,10 +57,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     # cache is /root/.cache, which an unprivileged process cannot write, so
     # the failure would appear on first load rather than at build time.
     HF_HOME=/home/memovo/.cache/huggingface \
-    # Offline by default: every weight the service needs is baked in below.
-    # A silent download on a cache miss would make startup depend on an
-    # external service and hide a missing bake until production.
-    HF_HUB_OFFLINE=1 \
+    # Weights are not baked into the image; they are downloaded into HF_HOME
+    # on first start and reused from there afterwards. Set HF_HUB_OFFLINE=1
+    # at run time to forbid the download and require a pre-populated cache.
+    HF_HUB_OFFLINE=0 \
     # Otherwise every start logs a symlink warning.
     HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
@@ -72,34 +72,22 @@ COPY --from=builder --chown=memovo:memovo /app/.venv /app/.venv
 
 USER memovo
 
-# Bake the weights. Startup then loads from disk: deterministic, offline, and
-# identical on every replica.
-#
-# --build-arg BAKE_MODEL=false produces a thin image with no weights. That
-# image does **not** fetch them at runtime: HF_HUB_OFFLINE=1 above forbids
-# it, so the model load fails and the service starts unready. It is useful
-# for testing that the image builds and boots, not for serving. To actually
-# run without baked weights, a caller must override HF_HUB_OFFLINE=0 at run
-# time and accept a download on first start.
-ARG BAKE_MODEL=true
-ARG MEMOVO_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-RUN if [ "$BAKE_MODEL" = "true" ]; then \
-        HF_HUB_OFFLINE=0 python -c "\
-import sys; \
-from sentence_transformers import SentenceTransformer; \
-SentenceTransformer(sys.argv[1]); \
-print('baked', sys.argv[1])" "$MEMOVO_EMBEDDING_MODEL"; \
-    fi
-
-ENV MEMOVO_EMBEDDING_MODEL=${MEMOVO_EMBEDDING_MODEL}
+# The weights are deliberately not baked in. A 1.2 GB layer pushed the image
+# past what the deployment target accepts, so startup downloads the model
+# into HF_HOME (writable by the service user above) on first start and loads
+# it from the cache on every start after that. Until the download and load
+# finish, /ready reports unavailable, exactly as it does during a cold load
+# from disk.
+ENV MEMOVO_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 
 EXPOSE 8000
 
 # Liveness only. Readiness is /ready and belongs to the orchestrator, which
 # can act on it -- Docker's HEALTHCHECK cannot take an instance out of a load
 # balancer, and wiring readiness here would only restart a container that is
-# loading a model perfectly normally.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --retries=3 \
+# loading a model perfectly normally. The start period covers a first-start
+# download of the weights on top of the cold load.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"
 
 # One worker per container. The embedding model is loaded once per process

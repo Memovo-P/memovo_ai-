@@ -259,11 +259,12 @@ def test_the_compose_healthcheck_uses_liveness_too() -> None:
     assert "/ready" not in test_command
 
 
-def test_the_healthcheck_allows_a_cold_model_load() -> None:
-    """A container killed part-way through a load never finishes one."""
+def test_the_healthcheck_allows_a_first_start_download_and_cold_load() -> None:
+    """A container killed part-way through a download or load never
+    finishes one, and a first start does both."""
     start_period = ai_service()["healthcheck"]["start_period"]  # type: ignore[index,call-overload]
 
-    assert start_period == "120s"
+    assert start_period == "300s"
 
 
 # ---------------------------------------------------------------------------
@@ -290,16 +291,20 @@ def test_the_model_cache_is_writable_by_the_service_user() -> None:
     assert "HF_HOME=/home/memovo/" in dockerfile()
 
 
-def test_the_runtime_is_offline_by_default() -> None:
-    """A silent cache-miss download would hide a missing bake until prod."""
-    assert "HF_HUB_OFFLINE=1" in dockerfile()
+def test_the_runtime_downloads_weights_on_first_start() -> None:
+    """Weights are not baked: the image must permit the runtime download."""
+    assert "HF_HUB_OFFLINE=0" in dockerfile()
+    assert not any("HF_HUB_OFFLINE=1" in line for line in dockerfile_directives())
 
 
-def test_weights_are_baked_by_default() -> None:
-    assert "ARG BAKE_MODEL=true" in dockerfile()
+def test_weights_are_not_baked_into_the_image() -> None:
+    """A baked layer pushed the image past what the deployment target
+    accepts. No build step may import the runtime to fetch weights."""
+    assert "BAKE_MODEL" not in dockerfile()
+    assert "sentence_transformers" not in dockerfile()
 
 
-def test_the_baked_model_matches_the_locked_decision() -> None:
+def test_the_configured_model_matches_the_locked_decision() -> None:
     manifest = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert manifest["project"]["name"] == "memovo-ai"
@@ -350,11 +355,12 @@ def test_ci_also_runs_the_gate_with_the_extras_installed() -> None:
     assert "uv run pytest" in commands
 
 
-def test_ci_builds_the_image_without_baking_weights() -> None:
+def test_ci_boots_the_image_offline_so_no_weights_are_fetched() -> None:
+    """The image downloads weights on first start; CI must forbid that."""
     image = workflow()["jobs"]["image"]  # type: ignore[index,call-overload]
-    build = next(step for step in image["steps"] if step.get("name") == "Build")
+    commands = " ".join(step.get("run", "") for step in image["steps"])
 
-    assert build["with"]["build-args"] == "BAKE_MODEL=false"
+    assert "HF_HUB_OFFLINE=1" in commands
 
 
 def test_ci_boots_the_image_and_probes_it() -> None:
