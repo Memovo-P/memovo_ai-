@@ -274,7 +274,19 @@ def test_the_healthcheck_allows_a_first_start_download_and_cold_load() -> None:
 
 def test_a_single_worker_is_configured() -> None:
     """The model is loaded per process and is over a gigabyte resident."""
-    assert '"--workers", "1"' in dockerfile()
+    assert "--workers 1" in dockerfile()
+
+
+def test_the_port_follows_the_platform() -> None:
+    """Railway injects PORT and healthchecks that port; a hardcoded 8000 is
+    unreachable there. The fallback keeps local runs on 8000."""
+    assert "--port ${PORT:-8000}" in dockerfile()
+    assert '"--port", "8000"' not in dockerfile()
+
+
+def test_uvicorn_stays_pid_1_behind_the_shell() -> None:
+    """Without exec, SIGTERM stops the shell and orphans uvicorn."""
+    assert "exec uvicorn" in dockerfile()
 
 
 def test_reload_is_not_enabled() -> None:

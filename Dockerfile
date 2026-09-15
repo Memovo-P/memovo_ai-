@@ -88,13 +88,14 @@ EXPOSE 8000
 # loading a model perfectly normally. The start period covers a first-start
 # download of the weights on top of the cold load.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/health').read()"
 
 # One worker per container. The embedding model is loaded once per process
 # (doc 02, section 7) and is over a gigabyte resident, so a second worker
 # doubles the memory for no shared benefit. Scale with replicas instead.
-CMD ["uvicorn", "memovo_ai.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "1", \
-     "--no-access-log"]
+#
+# The port comes from PORT when the platform injects one (Railway sends its
+# healthchecks to that port, so a hardcoded 8000 is unreachable there) and
+# falls back to 8000 otherwise. Exec form cannot expand a variable, hence the
+# shell; `exec` keeps uvicorn as PID 1 so it still receives SIGTERM.
+CMD ["sh", "-c", "exec uvicorn memovo_ai.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --no-access-log"]
