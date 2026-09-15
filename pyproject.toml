@@ -21,12 +21,22 @@ dependencies = [
 #     uv sync --extra embeddings
 embeddings = [
     "sentence-transformers>=3.0.0",
+    "torch>=2.9",
 ]
 # The MongoDB driver. Optional for the same reason: unit tests substitute a
 # stub collection, so CI needs neither the driver nor a cluster.
 #     uv sync --extra atlas
 atlas = [
     "pymongo>=4.9",
+]
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
 ]
 
 [dependency-groups]
